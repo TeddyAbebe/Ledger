@@ -3,19 +3,15 @@ import { Outlet, Route, Routes, useLocation, useNavigate } from "react-router-do
 import { Header } from "./components/Header"
 import { MenuSheet } from "./components/MenuSheet"
 import { useJournal } from "./context"
-import { download, tradesToCsv } from "./lib"
 import { AnalyticsPage } from "./pages/Analytics"
 import { DashboardPage } from "./pages/Dashboard"
 import { LogTradePage } from "./pages/LogTrade"
 
 function Layout() {
   const {
-    trades,
     settings,
     stats,
     setSettings,
-    importJson,
-    clearAll,
     syncKey,
     syncStatus,
     lastSynced,
@@ -53,33 +49,11 @@ function Layout() {
       ) : null}
       <MenuSheet
         open={menuOpen}
-        settings={settings}
         syncKey={syncKey}
         syncStatus={syncStatus}
         lastSynced={lastSynced}
         syncError={syncError}
         onClose={() => setMenuOpen(false)}
-        onCurrency={(currency) => setSettings({ ...settings, currency })}
-        onExportJson={() => {
-          download("ledger-trades.json", JSON.stringify(trades, null, 2), "application/json")
-          setMenuOpen(false)
-        }}
-        onExportCsv={() => {
-          download("ledger-trades.csv", tradesToCsv(trades), "text/csv")
-          setMenuOpen(false)
-        }}
-        onImport={async (file) => {
-          try {
-            await importJson(file)
-            setMenuOpen(false)
-          } catch {
-            window.alert("Could not import that file. Use a JSON export from Ledger.")
-          }
-        }}
-        onClear={() => {
-          clearAll()
-          setMenuOpen(false)
-        }}
         onCreateSync={createCloudSync}
         onJoinSync={joinCloudSync}
         onSyncNow={syncNow}

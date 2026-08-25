@@ -99,14 +99,19 @@ export function Header({ stats, settings, onTheme, onOpenMenu }: Props) {
             type="button"
             onClick={onOpenMenu}
             className="grid size-10 place-items-center rounded-full border border-line text-muted transition hover:text-ink"
-            aria-label="Menu"
+            aria-label="Settings"
           >
             <svg viewBox="0 0 24 24" className="size-5" fill="none" aria-hidden>
               <path
-                d="M5 7h14M5 12h14M5 17h10"
+                d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"
                 stroke="currentColor"
                 strokeWidth="1.8"
-                strokeLinecap="round"
+              />
+              <path
+                d="M19.4 13a7.6 7.6 0 0 0 .04-2l1.86-1.45-1.8-3.12-2.24.48a7.7 7.7 0 0 0-1.73-1L15.1 3.5h-6.2L8.47 5.9a7.7 7.7 0 0 0-1.73 1l-2.24-.48-1.8 3.12L4.56 11a7.6 7.6 0 0 0 .04 2l-1.86 1.45 1.8 3.12 2.24-.48a7.7 7.7 0 0 0 1.73 1l.43 2.4h6.2l.43-2.4a7.7 7.7 0 0 0 1.73-1l2.24.48 1.8-3.12L19.4 13Z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinejoin="round"
               />
             </svg>
           </button>
