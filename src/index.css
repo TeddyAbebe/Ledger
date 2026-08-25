@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-gold: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+  --color-day-win: var(--day-win);
+  --color-day-loss: var(--day-loss);
+}
+
+:root,
+[data-theme="dark"] {
+  --bg: #080b10;
+  --surface: #10151e;
+  --ink: #eef3fb;
+  --muted: #8b96a8;
+  --faint: #5c6578;
+  --line: rgb(255 255 255 / 0.08);
+  --accent: #c8a36a;
+  --on-accent: #1a140c;
+  --profit: #2ee59d;
+  --loss: #ff5d73;
+  --day-win: #3d6b45;
+  --day-loss: #8a3942;
+}
+
+[data-theme="blue"] {
+  --bg: #06111f;
+  --surface: #0b1c33;
+  --ink: #e8f2ff;
+  --muted: #8aa4c4;
+  --faint: #5d7898;
+  --line: rgb(140 180 255 / 0.14);
+  --accent: #6ea8ff;
+  --on-accent: #06101c;
+  --profit: #3ee6b0;
+  --loss: #ff6b7d;
+  --day-win: #2f6d58;
+  --day-loss: #7a3550;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input[type="date"],
+input[type="number"],
+input[type="text"],
+input[type="search"],
+input[type="url"],
+textarea {
+  font-size: 16px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.hero-glow {
+  background: radial-gradient(
+    900px 280px at 50% -40px,
+    color-mix(in srgb, var(--accent) 16%, transparent),
+    transparent 70%
+  );
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes scan-shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.scan-bar-fill {
+  position: relative;
+  overflow: hidden;
+}
+
+.scan-bar-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  animation: scan-shimmer 1.15s ease-in-out infinite;
+}
