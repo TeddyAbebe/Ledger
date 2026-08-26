@@ -1,26 +1,51 @@
-import { formatDate, formatMoney, signedPnl } from "../lib"
-import { displaySymbol } from "../symbols"
-import type { ResultFilter, Settings, Trade } from "../types"
+import { useEffect, useMemo, useState } from "react"
+import { formatDate, formatPnl, signedPnl } from "../lib"
+import type { ResultFilter, Trade } from "../types"
+import { TradeDetailCard } from "./TradeDetailCard"
+
+const DAYS_PER_PAGE = 5
+
+type DayGroup = {
+  date: string
+  pnl: number
+  trades: Trade[]
+}
 
 type Props = {
   trades: Trade[]
-  settings: Settings
   query: string
   result: ResultFilter
   onQuery: (value: string) => void
   onResult: (value: ResultFilter) => void
-  onEdit: (trade: Trade) => void
 }
 
-export function TradeList({
-  trades,
-  settings,
-  query,
-  result,
-  onQuery,
-  onResult,
-  onEdit,
-}: Props) {
+function groupByDate(trades: Trade[]): DayGroup[] {
+  const map = new Map<string, Trade[]>()
+  for (const trade of trades) {
+    const list = map.get(trade.date)
+    if (list) list.push(trade)
+    else map.set(trade.date, [trade])
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, items]) => ({
+      date,
+      trades: items,
+      pnl: items.reduce((sum, trade) => sum + signedPnl(trade), 0),
+    }))
+}
+
+export function TradeList({ trades, query, result, onQuery, onResult }: Props) {
+  const [page, setPage] = useState(0)
+  const groups = useMemo(() => groupByDate(trades), [trades])
+  const pageCount = Math.max(1, Math.ceil(groups.length / DAYS_PER_PAGE))
+  const current = Math.min(page, pageCount - 1)
+  const visible = groups.slice(current * DAYS_PER_PAGE, current * DAYS_PER_PAGE + DAYS_PER_PAGE)
+
+  useEffect(() => {
+    setPage(0)
+  }, [query, result, trades.length])
+
   return (
     <section className="pb-28 sm:pb-8">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -53,85 +78,69 @@ export function TradeList({
         </div>
       </div>
 
-      {trades.length === 0 ? (
+      {groups.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line px-4 py-12 text-center text-sm text-muted">
           No trades match these filters.
         </div>
       ) : (
-        <>
-          <div className="mb-2 hidden grid-cols-[1.1fr_1fr_0.7fr_0.9fr_1fr] px-4 text-[11px] uppercase tracking-[0.14em] text-faint md:grid">
-            <span>Date</span>
-            <span>Symbol</span>
-            <span>Side</span>
-            <span>Result</span>
-            <span className="text-right">P&L</span>
-          </div>
-          <ul className="grid gap-3">
-            {trades.map((trade) => {
-              const pnl = signedPnl(trade)
-              const up = pnl >= 0
-              return (
-                <li key={trade.id}>
-                  <button
-                    type="button"
-                    onClick={() => onEdit(trade)}
-                    className="flex w-full gap-3 rounded-2xl border border-line bg-white/[0.03] p-4 text-left transition hover:bg-white/[0.05] active:scale-[0.99]"
-                  >
-                    {trade.imageUrl ? (
-                      <img src={trade.imageUrl} alt="" className="size-14 shrink-0 rounded-xl object-cover md:hidden" />
-                    ) : null}
-                    <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3 md:hidden">
-                      <div>
-                        <p className="font-medium tracking-wide text-ink">
-                          {trade.kind === "day-total" ? "Daily total" : displaySymbol(trade.symbol)}
-                        </p>
-                        <p className="mt-1 text-xs text-muted">
-                          {formatDate(trade.date)}
-                          {trade.kind === "day-total"
-                            ? " · From screenshot"
-                            : ` · ${trade.side} · ${trade.result}`}
-                          {trade.lotSize ? ` · ${trade.lotSize} lot` : ""}
-                          {trade.closeReason === "tp"
-                            ? " · TP"
-                            : trade.closeReason === "sl"
-                              ? " · SL"
-                              : trade.closeReason === "manual"
-                                ? " · Manual"
-                                : ""}
-                        </p>
-                      </div>
-                      <p className={`font-mono text-base tabular-nums ${up ? "text-profit" : "text-loss"}`}>
-                        {formatMoney(pnl, settings.currency, true)}
-                      </p>
-                    </div>
+        <div className="grid gap-4">
+          {visible.map((day) => (
+            <section key={day.date} className="overflow-hidden rounded-2xl border border-line bg-white/[0.03]">
+              <div className="flex items-baseline justify-between gap-3 border-b border-line px-3 py-3 sm:px-4">
+                <p className="font-medium text-ink">{formatDate(day.date)}</p>
+                <p
+                  className={`font-mono text-sm tabular-nums ${
+                    day.pnl > 0 ? "text-profit" : day.pnl < 0 ? "text-loss" : "text-muted"
+                  }`}
+                >
+                  {formatPnl(day.pnl)}
+                </p>
+              </div>
+              <ul className="grid gap-2 p-2 sm:p-3">
+                {day.trades.map((trade) => (
+                  <li key={trade.id}>
+                    <TradeDetailCard
+                      trade={{
+                        symbol: trade.symbol,
+                        side: trade.side,
+                        pnl: signedPnl(trade),
+                        lotSize: trade.lotSize,
+                        openPrice: trade.openPrice,
+                        closePrice: trade.closePrice,
+                        closeReason: trade.closeReason,
+                        kind: trade.kind,
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
 
-                    <div className="hidden grid-cols-[1.1fr_1fr_0.7fr_0.9fr_1fr] items-center gap-3 md:grid">
-                      <p className="text-sm text-muted">{formatDate(trade.date)}</p>
-                      <p className="font-medium tracking-wide">
-                        {trade.kind === "day-total" ? "Daily total" : displaySymbol(trade.symbol)}
-                      </p>
-                      <p className="capitalize text-muted">
-                        {trade.kind === "day-total" ? "—" : trade.side}
-                      </p>
-                      <p className="capitalize text-muted">
-                        {trade.kind === "day-total" ? "Day" : trade.result}
-                      </p>
-                      <p className={`text-right font-mono tabular-nums ${up ? "text-profit" : "text-loss"}`}>
-                        {formatMoney(pnl, settings.currency, true)}
-                      </p>
-                    </div>
-
-                    {trade.notes ? (
-                      <p className="mt-3 line-clamp-2 text-sm text-muted md:mt-2">{trade.notes}</p>
-                    ) : null}
-                    </div>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </>
+          {pageCount > 1 ? (
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setPage((value) => Math.max(0, value - 1))}
+                disabled={current === 0}
+                className="h-10 rounded-full border border-line px-4 text-sm text-muted disabled:opacity-30 hover:text-ink"
+              >
+                Previous
+              </button>
+              <p className="text-sm text-muted">
+                {current + 1} / {pageCount}
+              </p>
+              <button
+                type="button"
+                onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
+                disabled={current >= pageCount - 1}
+                className="h-10 rounded-full border border-line px-4 text-sm text-muted disabled:opacity-30 hover:text-ink"
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
+        </div>
       )}
     </section>
   )

@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
 import { EquityChart } from "../components/EquityChart"
 import { Stats } from "../components/Stats"
 import { TradeList } from "../components/TradeList"
@@ -16,7 +15,6 @@ function sortTrades<T extends { date: string; createdAt: string }>(trades: T[]) 
 
 export function AnalyticsPage() {
   const { trades, settings } = useJournal()
-  const navigate = useNavigate()
   const [period, setPeriod] = useState<Period>("all")
   const [query, setQuery] = useState("")
   const [result, setResult] = useState<ResultFilter>("all")
@@ -76,13 +74,12 @@ export function AnalyticsPage() {
 
       <div className="mt-8">
         <TradeList
+          key={period}
           trades={visible}
-          settings={settings}
           query={query}
           result={result}
           onQuery={setQuery}
           onResult={setResult}
-          onEdit={(trade) => navigate(`/log/${trade.id}`)}
         />
       </div>
     </div>

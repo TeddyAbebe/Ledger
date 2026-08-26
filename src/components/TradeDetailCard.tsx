@@ -1,4 +1,4 @@
-import { formatMoney, formatPrice } from "../lib"
+import { formatPnl, formatPrice } from "../lib"
 import { displaySymbol } from "../symbols"
 import type { CloseReason } from "../types"
 
@@ -17,7 +17,6 @@ export type TradeCardModel = {
 
 type Props = {
   trade: TradeCardModel
-  currency: string
   onClick?: () => void
 }
 
@@ -37,7 +36,7 @@ function Badge({ label, active, tone }: { label: string; active: boolean; tone: 
   )
 }
 
-export function TradeDetailCard({ trade, currency, onClick }: Props) {
+export function TradeDetailCard({ trade, onClick }: Props) {
   const pnl = trade.pnl
   const up = pnl > 0
   const flat = pnl === 0
@@ -90,7 +89,7 @@ export function TradeDetailCard({ trade, currency, onClick }: Props) {
             flat ? "text-profit" : up ? "text-profit" : "text-loss"
           }`}
         >
-          {formatMoney(pnl, currency, true)}
+          {formatPnl(pnl)}
         </p>
         {trade.kind !== "day-total" && trade.closePrice != null ? (
           <p className="mt-1 font-mono text-xs text-muted">{formatPrice(trade.closePrice)}</p>

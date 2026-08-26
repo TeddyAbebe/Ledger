@@ -95,6 +95,27 @@ export function formatMonthLabel(year: number, month: number): string {
   })
 }
 
+export function formatPnl(value: number): string {
+  const formatted = Math.abs(value).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  if (value > 0) return `+${formatted} USD`
+  if (value < 0) return `−${formatted} USD`
+  return `${formatted} USD`
+}
+
+export function formatCompactPnl(value: number): string {
+  const abs = Math.abs(value)
+  const text =
+    abs >= 1000
+      ? `${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k`
+      : abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  if (value > 0) return `+${text}`
+  if (value < 0) return `−${text}`
+  return text
+}
+
 export function formatMoney(value: number, currency: string, signed = false): string {
   const abs = Math.abs(value)
   const formatted = new Intl.NumberFormat(undefined, {

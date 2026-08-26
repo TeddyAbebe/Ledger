@@ -23,6 +23,7 @@ type JournalValue = {
   stats: ReturnType<typeof computeStats>
   saveTrade: (input: Draft) => string
   deleteTrade: (id: string) => void
+  clearDay: (date: string) => void
   setSettings: (next: Settings) => void
   importJson: (file: File) => Promise<void>
   upsertDayTotals: (
@@ -186,6 +187,10 @@ export function JournalProvider({ children }: { children: ReactNode }) {
     setTrades((current) => current.filter((t) => t.id !== id))
   }
 
+  function clearDay(date: string) {
+    setTrades((current) => current.filter((t) => t.date !== date))
+  }
+
   async function importJson(file: File) {
     const text = await file.text()
     const parsed = JSON.parse(text) as Trade[]
@@ -275,6 +280,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
         stats,
         saveTrade,
         deleteTrade,
+        clearDay,
         setSettings: setSettingsState,
         importJson,
         upsertDayTotals,

@@ -70,7 +70,6 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/log" element={<LogTradePage />} />
-        <Route path="/log/:id" element={<LogTradePage />} />
       </Route>
     </Routes>
   )

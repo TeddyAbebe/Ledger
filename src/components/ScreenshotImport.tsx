@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useJournal } from "../context"
-import { formatDate, formatMoney } from "../lib"
+import { formatDate, formatPnl } from "../lib"
 import type { ExtractedDay, ExtractedTrade } from "../ocr/parseExness"
 import { readExnessScreenshot } from "../ocr/readScreenshot"
 import { TradeDetailCard } from "./TradeDetailCard"
@@ -9,12 +9,12 @@ import { TradeDetailCard } from "./TradeDetailCard"
 type DraftDay = {
   date: string
   pnl: number
-  selected: boolean
+  dateGuessed: boolean
   trades: ExtractedTrade[]
 }
 
 export function ScreenshotImport() {
-  const { settings, importScannedDays } = useJournal()
+  const { importScannedDays } = useJournal()
   const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -23,6 +23,7 @@ export function ScreenshotImport() {
   const [error, setError] = useState("")
   const [days, setDays] = useState<DraftDay[]>([])
   const [lightbox, setLightbox] = useState(false)
+  const [scannedText, setScannedText] = useState("")
 
   useEffect(() => {
     return () => {
@@ -59,8 +60,10 @@ export function ScreenshotImport() {
     setStatus("reading")
     setProgress(0)
     setDays([])
+    setScannedText("")
     try {
-      const { days: extracted } = await readExnessScreenshot(file, setProgress)
+      const { days: extracted, text } = await readExnessScreenshot(file, setProgress)
+      setScannedText(text.trim())
       setDays(extracted.map(toDraft))
       setStatus(extracted.length ? "review" : "error")
       if (!extracted.length) setError("Couldn’t read trades from that screenshot. Try a tighter crop of the history list.")
@@ -71,7 +74,7 @@ export function ScreenshotImport() {
   }
 
   function saveDetected() {
-    const chosen = days.filter((day) => day.selected && day.trades.length)
+    const chosen = days.filter((day) => day.trades.length)
     if (!chosen.length) return
     importScannedDays(
       chosen.map((day) => ({
@@ -87,7 +90,7 @@ export function ScreenshotImport() {
   }
 
   const scanning = status === "reading"
-  const tradeCount = days.filter((day) => day.selected).reduce((sum, day) => sum + day.trades.length, 0)
+  const tradeCount = days.reduce((sum, day) => sum + day.trades.length, 0)
 
   return (
     <div className="grid gap-4 rounded-3xl border border-line bg-surface/70 p-4 sm:p-6">
@@ -172,6 +175,17 @@ export function ScreenshotImport() {
 
       {error ? <p className="text-sm text-loss">{error}</p> : null}
 
+      {status === "error" && scannedText ? (
+        <details className="rounded-2xl border border-line bg-white/[0.03] p-3">
+          <summary className="cursor-pointer text-sm text-muted hover:text-ink">
+            Show scanned text
+          </summary>
+          <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-muted">
+            {scannedText}
+          </pre>
+        </details>
+      ) : null}
+
       {status === "review" && days.length > 0 ? (
         <div className="grid gap-4">
           <p className="text-sm text-muted">
@@ -180,39 +194,29 @@ export function ScreenshotImport() {
           </p>
           {days.map((day, index) => (
             <div key={`${day.date}-${index}`} className="grid gap-3 rounded-2xl border border-line p-3">
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={day.selected}
-                  onChange={(e) =>
-                    setDays((current) =>
-                      current.map((item, i) => (i === index ? { ...item, selected: e.target.checked } : item)),
-                    )
-                  }
-                  className="size-4 accent-[var(--accent)]"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="font-medium text-ink">{formatDate(day.date)}</p>
-                    <p
-                      className={`shrink-0 font-mono text-sm tabular-nums ${
-                        day.pnl > 0 ? "text-profit" : day.pnl < 0 ? "text-loss" : "text-muted"
-                      }`}
-                    >
-                      {formatMoney(day.pnl, settings.currency, true)}
-                    </p>
-                  </div>
-                  <p className="text-xs text-muted">
-                    {day.trades.length} {day.trades.length === 1 ? "trade" : "trades"}
+              <div className="min-w-0">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="font-medium text-ink">{formatDate(day.date)}</p>
+                  <p
+                    className={`shrink-0 font-mono text-sm tabular-nums ${
+                      day.pnl > 0 ? "text-profit" : day.pnl < 0 ? "text-loss" : "text-muted"
+                    }`}
+                  >
+                    {formatPnl(day.pnl)}
                   </p>
                 </div>
-              </label>
+                <p className="text-xs text-muted">
+                  {day.trades.length} {day.trades.length === 1 ? "trade" : "trades"}
+                  {day.dateGuessed ? (
+                    <span className="text-gold"> · date not found in the screenshot</span>
+                  ) : null}
+                </p>
+              </div>
               {day.trades.length ? (
                 <ul className="grid gap-2">
                   {day.trades.map((trade, tradeIndex) => (
                     <li key={`${trade.symbol}-${tradeIndex}`}>
                       <TradeDetailCard
-                        currency={settings.currency}
                         trade={{
                           symbol: trade.symbol,
                           side: trade.side,
@@ -283,7 +287,7 @@ function toDraft(day: ExtractedDay): DraftDay {
   return {
     date: day.date,
     pnl: day.pnl,
-    selected: true,
+    dateGuessed: Boolean(day.dateGuessed),
     trades: day.trades,
   }
 }

@@ -1,11 +1,10 @@
-import { formatCash } from "../lib"
+import { formatCompactPnl } from "../lib"
 import type { CalendarWeek, DayCell } from "../lib"
 
 const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
 type Props = {
   weeks: CalendarWeek[]
-  currency: string
   selected?: string | null
   today: string
   onSelect: (iso: string) => void
@@ -19,13 +18,11 @@ function tone(pnl: number, count: number) {
 
 function DayButton({
   cell,
-  currency,
   selected,
   today,
   onSelect,
 }: {
   cell: DayCell
-  currency: string
   selected?: string | null
   today: string
   onSelect: (iso: string) => void
@@ -38,22 +35,38 @@ function DayButton({
     <button
       type="button"
       onClick={() => onSelect(cell.iso)}
-      className={`relative min-h-[4.6rem] border-r border-b border-line p-1.5 text-left transition sm:min-h-[6.5rem] sm:p-2 ${tone(cell.pnl, cell.count)} ${
+      aria-current={isToday ? "date" : undefined}
+      className={`relative min-h-[3.5rem] cursor-pointer border-r border-b border-line p-1 text-left transition duration-200 hover:z-10 hover:brightness-[1.15] hover:shadow-[inset_0_0_22px_color-mix(in_srgb,var(--accent)_28%,transparent),0_0_18px_color-mix(in_srgb,var(--accent)_16%,transparent)] sm:min-h-[6.5rem] sm:p-2 ${tone(cell.pnl, cell.count)} ${
         cell.inMonth ? "" : "opacity-40"
-      } ${active ? "ring-2 ring-gold ring-inset" : ""} ${
-        isToday && !colored ? "bg-white/[0.04]" : ""
-      }`}
+      } ${isToday && !colored ? "bg-gold/[0.07]" : ""}`}
     >
-      <span className={`absolute top-1 left-1.5 text-[11px] sm:top-1.5 sm:left-2 sm:text-xs ${colored ? "text-white/85" : "text-muted"}`}>
+      {isToday ? (
+        <span className="pointer-events-none absolute inset-0 ring-1 ring-gold/45 ring-inset" />
+      ) : null}
+      {active ? (
+        <span className="pointer-events-none absolute inset-0 bg-white/[0.05] shadow-[inset_0_0_26px_rgba(0,0,0,0.7),inset_0_0_10px_rgba(0,0,0,0.5)]" />
+      ) : null}
+      <span
+        className={`absolute top-0.5 left-0.5 grid size-[17px] place-items-center rounded-full text-[10px] sm:top-1.5 sm:left-2 sm:size-5 sm:text-xs ${
+          isToday
+            ? "bg-gold font-semibold text-on-accent shadow-[0_0_10px_color-mix(in_srgb,var(--accent)_60%,transparent)]"
+            : colored
+              ? "text-white/85"
+              : "text-muted"
+        }`}
+      >
         {cell.day}
       </span>
       {cell.count > 0 ? (
-        <div className="flex h-full flex-col items-center justify-center pt-3 sm:pt-4">
-          <p className="font-mono text-[11px] font-semibold tabular-nums sm:text-sm md:text-base">
-            {formatCash(cell.pnl, currency)}
+        <div className="flex h-full flex-col items-center justify-center pt-3.5 sm:pt-4">
+          <p className="font-mono text-[10px] leading-tight font-semibold tabular-nums sm:text-sm md:text-base">
+            {formatCompactPnl(cell.pnl)}
           </p>
-          <p className={`mt-0.5 text-[10px] sm:text-xs ${colored ? "text-white/80" : "text-faint"}`}>
+          <p className={`mt-0.5 hidden text-[10px] sm:block sm:text-xs ${colored ? "text-white/80" : "text-faint"}`}>
             {cell.count} {cell.count === 1 ? "trade" : "trades"}
+          </p>
+          <p className={`mt-0.5 text-[9px] leading-none sm:hidden ${colored ? "text-white/75" : "text-faint"}`}>
+            {cell.count}t
           </p>
         </div>
       ) : null}
@@ -61,47 +74,72 @@ function DayButton({
   )
 }
 
-export function PnLCalendar({ weeks, currency, selected, today, onSelect }: Props) {
+export function PnLCalendar({ weeks, selected, today, onSelect }: Props) {
+  const activeWeeks = weeks
+    .map((week, index) => ({ week, index }))
+    .filter(({ week }) => week.count > 0)
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-line bg-surface/60">
-      <div className="grid grid-cols-8 border-b border-line text-center text-[11px] text-muted sm:text-xs">
-        {DAYS.map((day) => (
-          <div key={day} className="border-r border-line py-2">
-            {day}
+    <div>
+      <div className="overflow-hidden rounded-2xl border border-line bg-surface/60">
+        <div className="grid grid-cols-7 border-b border-line text-center text-[11px] text-muted sm:grid-cols-8 sm:text-xs">
+          {DAYS.map((day) => (
+            <div key={day} className="border-r border-line py-2">
+              {day}
+            </div>
+          ))}
+          <div className="hidden py-2 sm:block">Wk</div>
+        </div>
+
+        {weeks.map((week, index) => (
+          <div key={week.days[0].iso} className="grid grid-cols-7 sm:grid-cols-8">
+            {week.days.map((cell) => (
+              <DayButton
+                key={cell.iso}
+                cell={cell}
+                selected={selected}
+                today={today}
+                onSelect={onSelect}
+              />
+            ))}
+            <div
+              className={`hidden min-h-[6.5rem] flex-col items-center justify-center border-b border-line p-1 text-center sm:flex ${tone(week.pnl, week.count)}`}
+            >
+              <p className="text-[10px] sm:text-xs">Week {index + 1}</p>
+              {week.count > 0 ? (
+                <>
+                  <p className="mt-1 font-mono text-[10px] font-semibold tabular-nums sm:text-sm">
+                    {formatCompactPnl(week.pnl)}
+                  </p>
+                  <p className="mt-0.5 text-[10px] opacity-80 sm:text-xs">
+                    {week.count} {week.count === 1 ? "trade" : "trades"}
+                  </p>
+                </>
+              ) : null}
+            </div>
           </div>
         ))}
-        <div className="py-2">Wk</div>
       </div>
 
-      {weeks.map((week, index) => (
-        <div key={week.days[0].iso} className="grid grid-cols-8">
-          {week.days.map((cell) => (
-            <DayButton
-              key={cell.iso}
-              cell={cell}
-              currency={currency}
-              selected={selected}
-              today={today}
-              onSelect={onSelect}
-            />
+      {activeWeeks.length ? (
+        <div className="mt-2 grid grid-cols-2 gap-1.5 sm:hidden">
+          {activeWeeks.map(({ week, index }) => (
+            <div
+              key={week.days[0].iso}
+              className="flex items-center justify-between rounded-lg border border-line bg-surface/60 px-2 py-1.5"
+            >
+              <span className="text-[11px] text-muted">Week {index + 1}</span>
+              <span
+                className={`font-mono text-[11px] font-semibold tabular-nums ${
+                  week.pnl > 0 ? "text-profit" : week.pnl < 0 ? "text-loss" : "text-muted"
+                }`}
+              >
+                {formatCompactPnl(week.pnl)}
+              </span>
+            </div>
           ))}
-          <div
-            className={`flex min-h-[4.6rem] flex-col items-center justify-center border-b border-line p-1 text-center sm:min-h-[6.5rem] ${tone(week.pnl, week.count)}`}
-          >
-            <p className="text-[10px] sm:text-xs">Week {index + 1}</p>
-            {week.count > 0 ? (
-              <>
-                <p className="mt-1 font-mono text-[10px] font-semibold tabular-nums sm:text-sm">
-                  {formatCash(week.pnl, currency)}
-                </p>
-                <p className="mt-0.5 text-[10px] opacity-80 sm:text-xs">
-                  {week.count} {week.count === 1 ? "trade" : "trades"}
-                </p>
-              </>
-            ) : null}
-          </div>
         </div>
-      ))}
+      ) : null}
     </div>
   )
 }

@@ -3,11 +3,23 @@ export type PreparedShot = {
   color: ImageData
 }
 
+// Tall phone screenshots blow past canvas limits once upscaled, and a blank
+// readback there looks exactly like "no trades found".
+const MAX_SIDE = 4200
+const MAX_PIXELS = 9_000_000
+
+function pickScale(width: number, height: number) {
+  const preferred = width < 900 ? 2.2 : width > 1400 ? 1 : 1.6
+  const bySide = Math.min(MAX_SIDE / width, MAX_SIDE / height)
+  const byArea = Math.sqrt(MAX_PIXELS / (width * height))
+  return Math.max(0.4, Math.min(preferred, bySide, byArea))
+}
+
 export async function prepareScreenshot(file: File): Promise<PreparedShot> {
   const url = URL.createObjectURL(file)
   try {
     const img = await loadImage(url)
-    const scale = img.width < 900 ? 2.2 : img.width > 1400 ? 1 : 1.6
+    const scale = pickScale(img.width, img.height)
     const width = Math.round(img.width * scale)
     const height = Math.round(img.height * scale)
 

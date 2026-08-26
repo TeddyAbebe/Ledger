@@ -28,6 +28,7 @@ export type ExtractedDay = {
   pnl: number
   lots: number
   trades: ExtractedTrade[]
+  dateGuessed?: boolean
 }
 
 export type OcrWord = {
@@ -110,32 +111,85 @@ function parseLots(raw: string) {
   return Number(raw.replace(",", ".").replace(/\s+/g, ""))
 }
 
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+const MONTH_SRC = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?"
+// Tesseract regularly renders the "/" in 7/22/26 as a 1, l or I.
+const SEP_SRC = "[/.\\\\|lI1-]"
+const ISO_SRC = "\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}"
+const NUMERIC_SRC = `\\d{1,2}${SEP_SRC}\\d{1,2}${SEP_SRC}\\d{2,4}`
+const ISO_RE = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/
+const NUMERIC_RE = new RegExp(`^(\\d{1,2})${SEP_SRC}(\\d{1,2})${SEP_SRC}(\\d{2,4})$`)
+const DAY_MONTH_SRC = `\\d{1,2}\\s+${MONTH_SRC}(?:,?\\s+\\d{2,4})?`
+// The day must not run into a decimal, otherwise "May 0.01 lot" reads as a date.
+const MONTH_DAY_SRC = `${MONTH_SRC}\\s+\\d{1,2}(?![.\\d])(?:,?\\s+\\d{2,4})?`
+const HEADER_SRC = `(?:to\\s*d[a-z]y|yesterd[a-z]+|vesterday|${ISO_SRC}|${NUMERIC_SRC}|${DAY_MONTH_SRC}|${MONTH_DAY_SRC})`
+// OCR often glues a card-edge artifact onto the date ("@7/22/26"), so only refuse
+// to split when the preceding character could itself be part of a number or date.
+const HEADER_LEAD = "(?<![\\d/.\\\\-])"
+const HEADER_AT_START = new RegExp(`^\\W{0,3}(${HEADER_SRC})\\b`, "i")
+const HEADER_ANYWHERE = new RegExp(`${HEADER_LEAD}(?=${HEADER_SRC}\\b)`, "gi")
+const HEADER_FIND = new RegExp(`${HEADER_LEAD}(${HEADER_SRC})\\b`, "gi")
+
 function matchHeader(line: string): { label: string; rest: string } | null {
-  const today = line.match(/^(to\s*d[a-z]y)\b/i)
-  if (today) return { label: "today", rest: line.slice(today[0].length) }
-  const yesterday = line.match(/^(yesterd[a-z]+|vesterday)\b/i)
-  if (yesterday) return { label: "yesterday", rest: line.slice(yesterday[0].length) }
-  const date = line.match(/^(\d{1,2}[/.\\-]\d{1,2}[/.\\-]\d{2,4})\b/)
-  if (date) return { label: date[1], rest: line.slice(date[0].length) }
+  const match = line.match(HEADER_AT_START)
+  if (!match) return null
+  return { label: match[1], rest: line.slice(match[0].length) }
+}
+
+function findAnyDate(text: string, now: Date): string | null {
+  HEADER_FIND.lastIndex = 0
+  for (const match of text.matchAll(HEADER_FIND)) {
+    const date = resolveDate(match[1], now)
+    if (date) return date
+  }
   return null
 }
 
+function pickYear(candidates: number[], now: Date) {
+  for (const value of candidates) {
+    if (value >= 1000) return value
+    if (value >= 0 && value < 100) return 2000 + value
+  }
+  return now.getFullYear()
+}
+
+function buildDate(year: number, month: number, day: number): string | null {
+  if (month < 0 || month > 11 || day < 1 || day > 31) return null
+  return toIsoDate(new Date(year, month, day))
+}
+
 function resolveDate(label: string, now = new Date()): string | null {
-  const lower = label.toLowerCase()
-  if (lower === "today") return toIsoDate(now)
-  if (lower === "yesterday") {
+  const lower = label.trim().toLowerCase()
+  if (/^to\s*d[a-z]y$/.test(lower)) return toIsoDate(now)
+  if (/^(yesterd[a-z]+|vesterday)$/.test(lower)) {
     const d = new Date(now)
     d.setDate(d.getDate() - 1)
     return toIsoDate(d)
   }
-  const parts = label.split(/[/.\\-]/).map(Number)
-  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return null
-  let [a, b, c] = parts
-  if (c < 100) c += 2000
-  const month = a - 1
-  const day = b
-  if (month < 0 || month > 11 || day < 1 || day > 31) return null
-  return toIsoDate(new Date(c, month, day))
+
+  const named = lower.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/)
+  if (named) {
+    const numbers = (lower.match(/\d+/g) ?? []).map(Number)
+    const month = MONTHS.indexOf(named[1])
+    const dayAt = numbers.findIndex((value) => value >= 1 && value <= 31)
+    if (dayAt < 0) return null
+    const day = numbers[dayAt]
+    const rest = numbers.filter((_, index) => index !== dayAt)
+    return buildDate(pickYear(rest, now), month, day)
+  }
+
+  const compact = lower.replace(/\s+/g, "")
+  const iso = compact.match(ISO_RE)
+  if (iso) return buildDate(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+
+  const numeric = compact.match(NUMERIC_RE)
+  if (!numeric) return null
+  const [a, b, c] = numeric.slice(1).map(Number)
+  // Exness shows m/d/y, but fall back to d/m/y when the first part can't be a month.
+  const dayFirst = a > 12 && b <= 12
+  const month = (dayFirst ? b : a) - 1
+  const day = dayFirst ? a : b
+  return buildDate(pickYear([c], now), month, day)
 }
 
 function isTpWord(text: string) {
@@ -433,7 +487,7 @@ function extractTrades(body: string, lines: Line[], headerPnl = 0): ExtractedTra
 
 function explodeByHeaders(line: Line): Line[] {
   const parts = line.text
-    .split(/(?=(?:today|yesterday|\d{1,2}[/.\\-]\d{1,2}[/.\\-]\d{2,4})\b)/gi)
+    .split(HEADER_ANYWHERE)
     .map((part) => tidy(part))
     .filter(Boolean)
   if (parts.length <= 1) return [{ ...line, text: tidy(line.text) }]
@@ -473,6 +527,8 @@ export function parseExnessHistory(
     .map((word) => (word.bbox.y0 + word.bbox.y1) / 2)
 
   const groups: { date: string; label: string; pnl: number; lines: Line[]; rest: string }[] = []
+  // Cards above the first readable header still belong to a real day.
+  const orphans: Line[] = []
 
   for (const line of lines) {
     const cleaned = line.text
@@ -490,41 +546,96 @@ export function parseExnessHistory(
       })
       continue
     }
-    groups.at(-1)?.lines.push(line)
+    if (groups.length) groups.at(-1)?.lines.push(line)
+    else orphans.push(line)
   }
 
+  const days: ExtractedDay[] = []
   let usedActions = 0
-  return groups
-    .map((group, index) => {
-      const bodyLines = [
-        { text: tidy(group.rest), y: group.lines[0]?.y ?? 0, cy: group.lines[0]?.cy ?? 0, words: [] as OcrWord[] },
-        ...group.lines,
-      ]
-      const body = bodyLines.map((line) => line.text).filter(Boolean).join(" ")
-      const trades = extractTrades(body, bodyLines, group.pnl)
-      const y0 = Math.min(...group.lines.map((line) => line.y), Number.POSITIVE_INFINITY)
-      const nextY = groups[index + 1]
-        ? Math.min(...groups[index + 1].lines.map((line) => line.y), Number.POSITIVE_INFINITY)
-        : Number.POSITIVE_INFINITY
-      repairDay(
-        { date: group.date, label: group.label, pnl: group.pnl, lots: 0, trades },
-        group.lines,
-        options?.sampleBadge,
-        options?.color,
-        wordsInRange(options?.words ?? [], y0, nextY),
-        colorHits,
-        actionYs.slice(usedActions, usedActions + trades.length),
-      )
-      usedActions += trades.length
-      const lots = trades.reduce((sum, trade) => sum + trade.lots, 0)
-      const fromTrades = trades.reduce((sum, trade) => sum + trade.pnl, 0)
-      return {
-        date: group.date,
-        label: group.label,
-        pnl: fromTrades || group.pnl,
-        lots,
-        trades,
-      }
+
+  function addDay(params: {
+    date: string
+    label: string
+    headerPnl: number
+    bodyLines: Line[]
+    repairLines: Line[]
+    y0: number
+    y1: number
+    guessed?: boolean
+  }) {
+    const body = params.bodyLines.map((line) => line.text).filter(Boolean).join(" ")
+    const trades = extractTrades(body, params.bodyLines, params.headerPnl)
+    if (!trades.length) return null
+    const day: ExtractedDay = {
+      date: params.date,
+      label: params.label,
+      pnl: 0,
+      lots: 0,
+      trades,
+      dateGuessed: params.guessed,
+    }
+    repairDay(
+      day,
+      params.repairLines,
+      options?.sampleBadge,
+      options?.color,
+      wordsInRange(options?.words ?? [], params.y0, params.y1),
+      colorHits,
+      actionYs.slice(usedActions, usedActions + trades.length),
+    )
+    usedActions += trades.length
+    day.lots = trades.reduce((sum, trade) => sum + trade.lots, 0)
+    day.pnl = trades.reduce((sum, trade) => sum + trade.pnl, 0) || params.headerPnl
+    days.push(day)
+    return day
+  }
+
+  const firstGroupY = groups[0]
+    ? Math.min(...groups[0].lines.map((line) => line.y), Number.POSITIVE_INFINITY)
+    : Number.POSITIVE_INFINITY
+
+  let orphanDay: ExtractedDay | null = null
+  if (orphans.length) {
+    const orphanText = orphans.map((line) => line.text).join(" ")
+    const found = findAnyDate(orphanText, now) ?? (groups.length ? null : findAnyDate(text, now))
+    orphanDay = addDay({
+      date: found ?? toIsoDate(now),
+      label: found ?? "Date not found",
+      headerPnl: 0,
+      bodyLines: orphans,
+      repairLines: orphans,
+      y0: Math.min(...orphans.map((line) => line.y), Number.POSITIVE_INFINITY),
+      y1: firstGroupY,
+      guessed: !found,
     })
-    .filter((day) => day.trades.length > 0)
+  }
+
+  const unusedDates: string[] = []
+  for (const [index, group] of groups.entries()) {
+    const added = addDay({
+      date: group.date,
+      label: group.label,
+      headerPnl: group.pnl,
+      bodyLines: [
+        { text: tidy(group.rest), y: group.lines[0]?.y ?? 0, cy: group.lines[0]?.cy ?? 0, words: [] },
+        ...group.lines,
+      ],
+      repairLines: group.lines,
+      y0: Math.min(...group.lines.map((line) => line.y), Number.POSITIVE_INFINITY),
+      y1: groups[index + 1]
+        ? Math.min(...groups[index + 1].lines.map((line) => line.y), Number.POSITIVE_INFINITY)
+        : Number.POSITIVE_INFINITY,
+    })
+    if (!added) unusedDates.push(group.date)
+  }
+
+  // A header that claimed no cards was almost certainly split off from the
+  // dateless ones, so it beats falling back to today.
+  if (orphanDay?.dateGuessed && unusedDates.length === 1) {
+    orphanDay.date = unusedDates[0]
+    orphanDay.label = unusedDates[0]
+    orphanDay.dateGuessed = false
+  }
+
+  return days
 }

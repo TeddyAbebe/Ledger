@@ -74,6 +74,12 @@ button {
   font: inherit;
 }
 
+button:not(:disabled),
+label:has(> input[type="checkbox"]),
+summary {
+  cursor: pointer;
+}
+
 input[type="date"],
 input[type="number"],
 input[type="text"],
