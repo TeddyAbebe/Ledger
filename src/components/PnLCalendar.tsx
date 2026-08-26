@@ -34,14 +34,23 @@ function DayButton({
   const isToday = cell.iso === today
   const colored = cell.count > 0 && cell.pnl !== 0
 
+  if (!cell.inMonth) {
+    return (
+      <div
+        aria-hidden
+        className="min-h-[3.5rem] border-r border-b border-line bg-black/15 sm:min-h-[6.5rem]"
+      />
+    )
+  }
+
   return (
     <button
       type="button"
       onClick={() => onSelect(cell.iso)}
       aria-current={isToday ? "date" : undefined}
       className={`relative min-h-[3.5rem] cursor-pointer border-r border-b border-line px-0.5 py-1 text-left transition duration-200 hover:z-10 hover:brightness-[1.15] hover:shadow-[inset_0_0_22px_color-mix(in_srgb,var(--accent)_28%,transparent),0_0_18px_color-mix(in_srgb,var(--accent)_16%,transparent)] sm:min-h-[6.5rem] sm:p-2 ${tone(cell.pnl, cell.count)} ${
-        cell.inMonth ? "" : "opacity-40"
-      } ${isToday && !colored ? "bg-gold/[0.07]" : ""}`}
+        isToday && !colored ? "bg-gold/[0.07]" : ""
+      }`}
     >
       {isToday ? (
         <span className="pointer-events-none absolute inset-0 ring-1 ring-gold/45 ring-inset" />

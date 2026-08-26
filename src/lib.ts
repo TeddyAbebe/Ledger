@@ -308,12 +308,14 @@ export function buildMonth(year: number, month: number, trades: Trade[]): Calend
     const days: DayCell[] = []
     for (let d = 0; d < 7; d++) {
       const iso = toIsoDate(cursor)
-      const stats = grouped.get(iso)
+      const inMonth = cursor.getMonth() === month
+      // Days from the neighbouring months stay blank, so their P&L belongs to that month only.
+      const stats = inMonth ? grouped.get(iso) : undefined
       const summary = stats ? summarizeDay(stats) : { pnl: 0, count: 0 }
       days.push({
         iso,
         day: cursor.getDate(),
-        inMonth: cursor.getMonth() === month,
+        inMonth,
         pnl: summary.pnl,
         count: summary.count,
       })
