@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { formatDate, formatPnl, signedPnl } from "../lib"
 import type { ResultFilter, Trade } from "../types"
 import { TradeDetailCard } from "./TradeDetailCard"
@@ -35,12 +35,113 @@ function groupByDate(trades: Trade[]): DayGroup[] {
     }))
 }
 
+// First and last page always stay reachable; the rest collapses into gaps.
+function pageItems(current: number, total: number, span: number): (number | "gap")[] {
+  const wanted = new Set([0, total - 1, current])
+  for (let step = 1; step <= span; step++) {
+    if (current - step >= 0) wanted.add(current - step)
+    if (current + step < total) wanted.add(current + step)
+  }
+
+  const items: (number | "gap")[] = []
+  let previous = -1
+  for (const page of [...wanted].sort((a, b) => a - b)) {
+    if (previous >= 0 && page - previous > 1) items.push("gap")
+    items.push(page)
+    previous = page
+  }
+  return items
+}
+
+function Arrow({ back }: { back?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden>
+      <path
+        d={back ? "M14 6l-6 6 6 6" : "M10 6l6 6-6 6"}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function Pager({
+  current,
+  total,
+  span,
+  className,
+  onChange,
+}: {
+  current: number
+  total: number
+  span: number
+  className: string
+  onChange: (page: number) => void
+}) {
+  const step = "grid size-8 place-items-center rounded-lg text-sm transition sm:size-9"
+
+  return (
+    <nav aria-label="Trade pages" className={`items-center gap-1 ${className}`}>
+      <button
+        type="button"
+        onClick={() => onChange(current - 1)}
+        disabled={current === 0}
+        aria-label="Previous page"
+        className={`${step} border border-line text-muted hover:text-ink disabled:opacity-30 disabled:hover:text-muted`}
+      >
+        <Arrow back />
+      </button>
+
+      {pageItems(current, total, span).map((item, index) =>
+        item === "gap" ? (
+          <span key={`gap-${index}`} className="grid size-6 place-items-center text-sm text-faint sm:size-9">
+            …
+          </span>
+        ) : (
+          <button
+            key={item}
+            type="button"
+            onClick={() => onChange(item)}
+            aria-current={item === current ? "page" : undefined}
+            className={`${step} tabular-nums ${
+              item === current
+                ? "bg-gold font-semibold text-on-accent"
+                : "text-muted hover:bg-white/[0.06] hover:text-ink"
+            }`}
+          >
+            {item + 1}
+          </button>
+        ),
+      )}
+
+      <button
+        type="button"
+        onClick={() => onChange(current + 1)}
+        disabled={current >= total - 1}
+        aria-label="Next page"
+        className={`${step} border border-line text-muted hover:text-ink disabled:opacity-30 disabled:hover:text-muted`}
+      >
+        <Arrow />
+      </button>
+    </nav>
+  )
+}
+
 export function TradeList({ trades, query, result, onQuery, onResult }: Props) {
   const [page, setPage] = useState(0)
+  const topRef = useRef<HTMLDivElement>(null)
   const groups = useMemo(() => groupByDate(trades), [trades])
   const pageCount = Math.max(1, Math.ceil(groups.length / DAYS_PER_PAGE))
   const current = Math.min(page, pageCount - 1)
-  const visible = groups.slice(current * DAYS_PER_PAGE, current * DAYS_PER_PAGE + DAYS_PER_PAGE)
+  const from = current * DAYS_PER_PAGE
+  const visible = groups.slice(from, from + DAYS_PER_PAGE)
+
+  function goTo(next: number) {
+    setPage(Math.min(pageCount - 1, Math.max(0, next)))
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
   useEffect(() => {
     setPage(0)
@@ -48,6 +149,7 @@ export function TradeList({ trades, query, result, onQuery, onResult }: Props) {
 
   return (
     <section className="pb-28 sm:pb-8">
+      <div ref={topRef} className="scroll-mt-24" />
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] uppercase tracking-[0.16em] text-faint">Journal</p>
@@ -118,26 +220,18 @@ export function TradeList({ trades, query, result, onQuery, onResult }: Props) {
           ))}
 
           {pageCount > 1 ? (
-            <div className="flex items-center justify-between gap-3 pt-1">
-              <button
-                type="button"
-                onClick={() => setPage((value) => Math.max(0, value - 1))}
-                disabled={current === 0}
-                className="h-10 rounded-full border border-line px-4 text-sm text-muted disabled:opacity-30 hover:text-ink"
-              >
-                Previous
-              </button>
-              <p className="text-sm text-muted">
-                {current + 1} / {pageCount}
+            <div className="flex flex-col items-center gap-3 pt-2 sm:flex-row sm:justify-between">
+              <p className="text-xs text-muted">
+                Days {from + 1}–{Math.min(from + DAYS_PER_PAGE, groups.length)} of {groups.length}
               </p>
-              <button
-                type="button"
-                onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
-                disabled={current >= pageCount - 1}
-                className="h-10 rounded-full border border-line px-4 text-sm text-muted disabled:opacity-30 hover:text-ink"
-              >
-                Next
-              </button>
+              <Pager current={current} total={pageCount} span={1} onChange={goTo} className="flex sm:hidden" />
+              <Pager
+                current={current}
+                total={pageCount}
+                span={2}
+                onChange={goTo}
+                className="hidden sm:flex"
+              />
             </div>
           ) : null}
         </div>
