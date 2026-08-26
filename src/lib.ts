@@ -116,6 +116,14 @@ export function formatCompactPnl(value: number): string {
   return text
 }
 
+export function formatTightPnl(value: number): string {
+  const abs = Math.abs(value)
+  const text = abs >= 1000 ? `${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k` : Math.round(abs).toString()
+  if (value > 0) return `+${text}`
+  if (value < 0) return `−${text}`
+  return text
+}
+
 export function formatMoney(value: number, currency: string, signed = false): string {
   const abs = Math.abs(value)
   const formatted = new Intl.NumberFormat(undefined, {
