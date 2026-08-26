@@ -44,7 +44,7 @@ export function AnalyticsPage() {
             Performance
           </h1>
         </div>
-        <div className="no-scrollbar flex gap-1 overflow-x-auto rounded-full border border-line p-1">
+        <div className="grid w-full grid-cols-4 gap-1 rounded-full border border-line p-1 sm:flex sm:w-auto">
           {(
             [
               ["all", "All time"],
@@ -57,7 +57,7 @@ export function AnalyticsPage() {
               key={value}
               type="button"
               onClick={() => setPeriod(value)}
-              className={`whitespace-nowrap rounded-full px-3 py-1.5 text-sm ${
+              className={`rounded-full px-1 py-1.5 text-[11px] whitespace-nowrap sm:px-3 sm:text-sm ${
                 period === value ? "bg-white/10 text-ink" : "text-muted"
               }`}
             >

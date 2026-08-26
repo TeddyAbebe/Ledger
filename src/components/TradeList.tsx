@@ -61,13 +61,13 @@ export function TradeList({ trades, query, result, onQuery, onResult }: Props) {
             placeholder="Search symbol or notes"
             className="h-11 w-full rounded-xl border border-line bg-white/[0.04] px-3 text-sm text-ink outline-none placeholder:text-faint focus:border-gold/50 sm:w-56"
           />
-          <div className="grid grid-cols-3 rounded-xl border border-line p-1 text-sm">
+          <div className="grid grid-cols-3 rounded-xl border border-line p-1 text-sm sm:min-w-[15.5rem]">
             {(["all", "win", "loss"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => onResult(value)}
-                className={`h-9 rounded-lg capitalize ${
+                className={`h-9 rounded-lg px-3 capitalize ${
                   result === value ? "bg-white/10 text-ink" : "text-muted"
                 }`}
               >
