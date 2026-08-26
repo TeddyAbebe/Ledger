@@ -35,7 +35,9 @@ function Layout() {
         onTheme={(theme) => setSettings({ ...settings, theme })}
         onOpenMenu={() => setMenuOpen(true)}
       />
-      <main className="relative">
+      <main
+        className={`relative ${onLogPage ? "" : "pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0"}`}
+      >
         <Outlet />
       </main>
       {!onLogPage ? (
