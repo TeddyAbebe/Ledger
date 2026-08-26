@@ -11,7 +11,7 @@ import {
   saveSyncKey,
   type SyncStatus,
 } from "./cloudSync"
-import { computeStats, loadSettings, loadTrades, saveSettings, saveTrades } from "./lib"
+import { applyHistorySeed, computeStats, loadSettings, loadTrades, saveSettings, saveTrades } from "./lib"
 import type { ExtractedDay, ExtractedTrade } from "./ocr/parseExness"
 import type { Settings, Trade } from "./types"
 
@@ -96,8 +96,9 @@ export function JournalProvider({ children }: { children: ReactNode }) {
         await pushToCloud(key, trades, settings)
         return
       }
-      skipPush.current = true
-      setTrades(remote.trades)
+      const hydrated = applyHistorySeed(remote.trades)
+      skipPush.current = hydrated === remote.trades
+      setTrades(hydrated)
       setSettingsState((current) => ({ ...current, ...remote.settings }))
       saveRevision(remote.updatedAt)
       setLastSynced(remote.updatedAt)

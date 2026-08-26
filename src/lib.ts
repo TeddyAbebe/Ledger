@@ -1,11 +1,13 @@
+import { historyTrades } from "./data/history"
 import type { Period, Settings, Trade } from "./types"
 
 const TRADES_KEY = "ledger.trades.v1"
 const SETTINGS_KEY = "ledger.settings.v1"
+const HISTORY_PREFIX = "exness-"
 
 export const defaultSettings: Settings = { currency: "USD", theme: "dark" }
 
-export function loadTrades(): Trade[] {
+function storedTrades(): Trade[] {
   try {
     const raw = localStorage.getItem(TRADES_KEY)
     if (!raw) return []
@@ -15,6 +17,27 @@ export function loadTrades(): Trade[] {
   } catch {
     return []
   }
+}
+
+export function applyHistorySeed(trades: Trade[]): Trade[] {
+  if (trades.some((trade) => trade.id.startsWith(HISTORY_PREFIX))) return trades
+  const history = historyTrades()
+  // The export is the full record for the days it covers, so it replaces anything logged there.
+  const covered = new Set(history.map((trade) => trade.date))
+  return [...trades.filter((trade) => !covered.has(trade.date)), ...history]
+}
+
+export function loadTrades(): Trade[] {
+  const current = storedTrades()
+  const seeded = applyHistorySeed(current)
+  if (seeded !== current) {
+    try {
+      saveTrades(seeded)
+    } catch {
+      // Storage is full or unavailable; the trades still render for this session.
+    }
+  }
+  return seeded
 }
 
 export function saveTrades(trades: Trade[]) {
