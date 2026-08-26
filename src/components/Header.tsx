@@ -63,7 +63,7 @@ export function Header({ stats, settings, onTheme, onOpenMenu }: Props) {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <div className="hidden text-right lg:block">
+          <div className="hidden text-right sm:block">
             <p className="text-[11px] uppercase tracking-[0.16em] text-faint">Net P&L</p>
             <p className={`font-mono text-base font-medium tabular-nums ${positive ? "text-profit" : "text-loss"}`}>
               {formatMoney(stats.net, settings.currency, true)}
@@ -118,14 +118,14 @@ export function Header({ stats, settings, onTheme, onOpenMenu }: Props) {
         </div>
       </div>
 
-      <nav className="mx-auto flex max-w-6xl gap-1 px-3 pb-3 md:hidden">
+      <nav className="mx-auto flex max-w-6xl items-center gap-1.5 px-3 pb-3 md:hidden">
         {tabs.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}
             end={tab.end}
             className={({ isActive }) =>
-              `flex-1 rounded-full border border-line py-2 text-center text-sm ${
+              `min-w-0 flex-1 rounded-full border border-line py-2 text-center text-sm ${
                 isActive ? "bg-white/10 text-ink" : "text-muted"
               }`
             }
@@ -133,6 +133,17 @@ export function Header({ stats, settings, onTheme, onOpenMenu }: Props) {
             {tab.label}
           </NavLink>
         ))}
+
+        <div className="shrink-0 rounded-full border border-line px-3 py-1.5 text-right sm:hidden">
+          <p className="text-[9px] leading-none tracking-[0.14em] text-faint uppercase">Net P&L</p>
+          <p
+            className={`mt-1 font-mono text-[13px] leading-none font-medium tabular-nums ${
+              positive ? "text-profit" : "text-loss"
+            }`}
+          >
+            {formatMoney(stats.net, settings.currency, true)}
+          </p>
+        </div>
       </nav>
     </header>
   )
