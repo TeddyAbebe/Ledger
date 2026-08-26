@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
-import { formatMoney } from "../lib"
+import { formatCompactMoney, formatMoney } from "../lib"
 import type { Settings, Theme } from "../types"
 import type { Stats } from "../lib"
 
@@ -141,7 +141,7 @@ export function Header({ stats, settings, onTheme, onOpenMenu }: Props) {
               positive ? "text-profit" : "text-loss"
             }`}
           >
-            {formatMoney(stats.net, settings.currency, true)}
+            {formatCompactMoney(stats.net)}
           </p>
         </div>
       </nav>

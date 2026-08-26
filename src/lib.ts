@@ -88,6 +88,14 @@ export function formatDate(iso: string): string {
   })
 }
 
+export function formatWeekdayShort(iso: string): string {
+  return parseIso(iso).toLocaleDateString("en-US", { weekday: "short" })
+}
+
+export function formatDayShort(iso: string): string {
+  return parseIso(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
 export function formatMonthLabel(year: number, month: number): string {
   return new Date(year, month, 1).toLocaleDateString(undefined, {
     month: "short",
@@ -105,28 +113,41 @@ export function formatPnl(value: number): string {
   return `${formatted} USD`
 }
 
-export function formatCompactPnl(value: number): string {
-  const abs = Math.abs(value)
-  const text =
-    abs >= 1000
-      ? `${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k`
-      : abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function withSign(value: number, text: string): string {
   if (value > 0) return `+${text}`
   if (value < 0) return `−${text}`
   return text
+}
+
+// Keeps a figure inside a calendar cell: cents while it fits, then k, then M.
+function shortAbs(abs: number, centsBelow: number): string {
+  if (abs >= 1_000_000) return `${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`
+  if (abs >= centsBelow) return `${(abs / 1000).toFixed(abs >= 100_000 ? 0 : 1)}k`
+  return abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+export function formatCompactPnl(value: number): string {
+  return withSign(value, shortAbs(Math.abs(value), 10_000))
+}
+
+export function formatDensePnl(value: number): string {
+  return withSign(value, shortAbs(Math.abs(value), 1000))
 }
 
 export function formatTightPnl(value: number): string {
   const abs = Math.abs(value)
-  const text = abs >= 1000 ? `${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k` : Math.round(abs).toString()
-  if (value > 0) return `+${text}`
-  if (value < 0) return `−${text}`
-  return text
+  if (abs >= 1_000_000) return withSign(value, `${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`)
+  if (abs >= 1000) return withSign(value, `${(abs / 1000).toFixed(abs >= 10_000 ? 0 : 1)}k`)
+  return withSign(value, Math.round(abs).toString())
+}
+
+export function formatCompactMoney(value: number): string {
+  return withSign(value, `$${shortAbs(Math.abs(value), 10_000)}`)
 }
 
 export function formatMoney(value: number, currency: string, signed = false): string {
   const abs = Math.abs(value)
-  const formatted = new Intl.NumberFormat(undefined, {
+  const formatted = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
     maximumFractionDigits: abs >= 1000 ? 0 : 2,

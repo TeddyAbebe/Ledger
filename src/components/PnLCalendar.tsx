@@ -1,4 +1,4 @@
-import { formatCompactPnl, formatTightPnl } from "../lib"
+import { formatCompactPnl, formatDensePnl, formatTightPnl } from "../lib"
 import type { CalendarWeek, DayCell } from "../lib"
 
 const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
@@ -11,6 +11,7 @@ type Props = {
   selected?: string | null
   today: string
   onSelect: (iso: string) => void
+  onSelectWeek: (index: number) => void
 }
 
 function tone(pnl: number, count: number) {
@@ -72,7 +73,8 @@ function DayButton({
       {cell.count > 0 ? (
         <div className="flex h-full flex-col items-center justify-center pt-3.5 sm:pt-4">
           <p className="font-mono text-[9px] leading-tight font-semibold tabular-nums sm:text-sm md:text-base">
-            {formatCompactPnl(cell.pnl)}
+            <span className="sm:hidden">{formatDensePnl(cell.pnl)}</span>
+            <span className="hidden sm:inline">{formatCompactPnl(cell.pnl)}</span>
           </p>
           <p className={`mt-0.5 hidden text-[10px] sm:block sm:text-xs ${colored ? "text-white/80" : "text-faint"}`}>
             {cell.count} {cell.count === 1 ? "trade" : "trades"}
@@ -86,7 +88,7 @@ function DayButton({
   )
 }
 
-export function PnLCalendar({ weeks, selected, today, onSelect }: Props) {
+export function PnLCalendar({ weeks, selected, today, onSelect, onSelectWeek }: Props) {
   return (
     <div>
       <div className="overflow-hidden rounded-2xl border border-line bg-surface/60">
@@ -110,8 +112,12 @@ export function PnLCalendar({ weeks, selected, today, onSelect }: Props) {
                 onSelect={onSelect}
               />
             ))}
-            <div
-              className={`flex min-h-[3.5rem] flex-col items-center justify-center border-b border-line px-0.5 py-1 text-center sm:min-h-[6.5rem] sm:p-1 ${tone(week.pnl, week.count)}`}
+            <button
+              type="button"
+              onClick={() => onSelectWeek(index)}
+              disabled={week.count === 0}
+              aria-label={`Week ${index + 1} summary`}
+              className={`flex min-h-[3.5rem] cursor-pointer flex-col items-center justify-center border-b border-line px-0.5 py-1 text-center transition duration-200 hover:z-10 hover:brightness-[1.15] hover:shadow-[inset_0_0_22px_color-mix(in_srgb,var(--accent)_28%,transparent),0_0_18px_color-mix(in_srgb,var(--accent)_16%,transparent)] disabled:cursor-default disabled:hover:brightness-100 disabled:hover:shadow-none sm:min-h-[6.5rem] sm:p-1 ${tone(week.pnl, week.count)}`}
             >
               <p className="text-[9px] leading-none sm:text-xs">
                 <span className="sm:hidden">W{index + 1}</span>
@@ -128,7 +134,7 @@ export function PnLCalendar({ weeks, selected, today, onSelect }: Props) {
                   </p>
                 </>
               ) : null}
-            </div>
+            </button>
           </div>
         ))}
       </div>

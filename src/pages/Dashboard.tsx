@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { DayDetailModal } from "../components/DayDetailModal"
 import { PnLCalendar } from "../components/PnLCalendar"
+import { WeekDetailModal } from "../components/WeekDetailModal"
 import { useJournal } from "../context"
 import {
   buildMonth,
@@ -20,6 +21,7 @@ export function DashboardPage() {
   const [month, setMonth] = useState(now.getMonth())
   const [selected, setSelected] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const [openWeek, setOpenWeek] = useState<number | null>(null)
 
   const weeks = useMemo(() => buildMonth(year, month, trades), [year, month, trades])
   const net = monthPnl(year, month, trades)
@@ -33,6 +35,7 @@ export function DashboardPage() {
     setMonth(next.getMonth())
     setSelected(null)
     setOpen(false)
+    setOpenWeek(null)
   }
 
   function goToday() {
@@ -74,13 +77,13 @@ export function DashboardPage() {
               {formatMonthLabel(year, month)}
             </p>
             <p
-              className={`font-display text-[1.65rem] leading-none tracking-tight sm:text-3xl ${
+              className={`truncate font-display text-[clamp(1.25rem,6vw,1.65rem)] leading-none tracking-tight tabular-nums sm:text-3xl ${
                 net >= 0 ? "text-profit" : "text-loss"
               }`}
             >
               {formatCash(net, settings.currency)}
             </p>
-            <p className="mt-1.5 text-[11px] tracking-[0.12em] text-faint uppercase">
+            <p className="mt-1.5 truncate text-[10px] tracking-[0.1em] text-faint uppercase sm:text-[11px] sm:tracking-[0.12em]">
               Monthly P/L
               {count > 0 ? (
                 <>
@@ -110,6 +113,7 @@ export function DashboardPage() {
             setSelected(iso)
             setOpen(true)
           }}
+          onSelectWeek={setOpenWeek}
         />
       </div>
 
@@ -129,6 +133,19 @@ export function DashboardPage() {
             </Link>
           </div>
         </section>
+      ) : null}
+
+      {openWeek !== null && weeks[openWeek] ? (
+        <WeekDetailModal
+          week={weeks[openWeek]}
+          index={openWeek}
+          onClose={() => setOpenWeek(null)}
+          onSelectDay={(iso) => {
+            setOpenWeek(null)
+            setSelected(iso)
+            setOpen(true)
+          }}
+        />
       ) : null}
 
       {open && selected ? (
