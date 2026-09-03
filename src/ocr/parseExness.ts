@@ -113,27 +113,36 @@ function parseLots(raw: string) {
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 const MONTH_SRC = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?"
-// Tesseract regularly renders the "/" in 7/22/26 as a 1, l or I.
-const SEP_SRC = "[/.\\\\|lI1-]"
+// Real date separators, plus OCR stand-ins for "/". Digit "1" is NOT a general separator —
+// treating it as one turned prices like 418.087 into "Apr 8, 2087".
+const SEP_SRC = "[/.\\\\|lI-]"
+// Only when "/" was clearly turned into "1" and a slash/dash still follows
+// (7122/26). A trailing "." would also match gold prices like 418.087.
+const MANGLED_SRC = `\\d{1,2}1\\d{1,2}[/\\\\-]\\d{2,4}`
 const ISO_SRC = "\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}"
 const NUMERIC_SRC = `\\d{1,2}${SEP_SRC}\\d{1,2}${SEP_SRC}\\d{2,4}`
 const ISO_RE = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/
 const NUMERIC_RE = new RegExp(`^(\\d{1,2})${SEP_SRC}(\\d{1,2})${SEP_SRC}(\\d{2,4})$`)
+const MANGLED_RE = /^(\d{1,2})1(\d{1,2})[/\\-](\d{2,4})$/
 const DAY_MONTH_SRC = `\\d{1,2}\\s+${MONTH_SRC}(?:,?\\s+\\d{2,4})?`
 // The day must not run into a decimal, otherwise "May 0.01 lot" reads as a date.
 const MONTH_DAY_SRC = `${MONTH_SRC}\\s+\\d{1,2}(?![.\\d])(?:,?\\s+\\d{2,4})?`
-const HEADER_SRC = `(?:to\\s*d[a-z]y|yesterd[a-z]+|vesterday|${ISO_SRC}|${NUMERIC_SRC}|${DAY_MONTH_SRC}|${MONTH_DAY_SRC})`
+const HEADER_SRC = `(?:to\\s*d[a-z]y|yesterd[a-z]+|vesterday|${ISO_SRC}|${MANGLED_SRC}|${NUMERIC_SRC}|${DAY_MONTH_SRC}|${MONTH_DAY_SRC})`
 // OCR often glues a card-edge artifact onto the date ("@7/22/26"), so only refuse
 // to split when the preceding character could itself be part of a number or date.
 const HEADER_LEAD = "(?<![\\d/.\\\\-])"
 const HEADER_AT_START = new RegExp(`^\\W{0,3}(${HEADER_SRC})\\b`, "i")
-const HEADER_ANYWHERE = new RegExp(`${HEADER_LEAD}(?=${HEADER_SRC}\\b)`, "gi")
 const HEADER_FIND = new RegExp(`${HEADER_LEAD}(${HEADER_SRC})\\b`, "gi")
 
-function matchHeader(line: string): { label: string; rest: string } | null {
+function matchHeader(
+  line: string,
+  now = new Date(),
+): { label: string; rest: string; date: string } | null {
   const match = line.match(HEADER_AT_START)
   if (!match) return null
-  return { label: match[1], rest: line.slice(match[0].length) }
+  const date = resolveDate(match[1], now)
+  if (!date) return null
+  return { label: match[1], rest: line.slice(match[0].length), date }
 }
 
 function findAnyDate(text: string, now: Date): string | null {
@@ -146,16 +155,32 @@ function findAnyDate(text: string, now: Date): string | null {
 }
 
 function pickYear(candidates: number[], now: Date) {
+  const current = now.getFullYear()
   for (const value of candidates) {
-    if (value >= 1000) return value
-    if (value >= 0 && value < 100) return 2000 + value
+    const year = value >= 1000 ? value : value >= 0 && value < 100 ? 2000 + value : null
+    if (year == null) continue
+    // Reject OCR noise that turns prices into far-future or ancient years.
+    if (year < current - 5 || year > current + 1) continue
+    return year
   }
-  return now.getFullYear()
+  return current
 }
 
 function buildDate(year: number, month: number, day: number): string | null {
   if (month < 0 || month > 11 || day < 1 || day > 31) return null
-  return toIsoDate(new Date(year, month, day))
+  const built = new Date(year, month, day)
+  // Reject overflow like Feb 31 → Mar 3.
+  if (built.getFullYear() !== year || built.getMonth() !== month || built.getDate() !== day) return null
+  return toIsoDate(built)
+}
+
+function resolveNumericParts(a: number, b: number, c: number, now: Date) {
+  // Exness shows m/d/y, but fall back to d/m/y when the first part can't be a month.
+  const dayFirst = a > 12 && b <= 12
+  const month = (dayFirst ? b : a) - 1
+  const day = dayFirst ? a : b
+  if (a > 31 || b > 31) return null
+  return buildDate(pickYear([c], now), month, day)
 }
 
 function resolveDate(label: string, now = new Date()): string | null {
@@ -180,16 +205,18 @@ function resolveDate(label: string, now = new Date()): string | null {
 
   const compact = lower.replace(/\s+/g, "")
   const iso = compact.match(ISO_RE)
-  if (iso) return buildDate(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+  if (iso) {
+    const year = Number(iso[1])
+    if (year < now.getFullYear() - 5 || year > now.getFullYear() + 1) return null
+    return buildDate(year, Number(iso[2]) - 1, Number(iso[3]))
+  }
+
+  const mangled = compact.match(MANGLED_RE)
+  if (mangled) return resolveNumericParts(Number(mangled[1]), Number(mangled[2]), Number(mangled[3]), now)
 
   const numeric = compact.match(NUMERIC_RE)
   if (!numeric) return null
-  const [a, b, c] = numeric.slice(1).map(Number)
-  // Exness shows m/d/y, but fall back to d/m/y when the first part can't be a month.
-  const dayFirst = a > 12 && b <= 12
-  const month = (dayFirst ? b : a) - 1
-  const day = dayFirst ? a : b
-  return buildDate(pickYear([c], now), month, day)
+  return resolveNumericParts(Number(numeric[1]), Number(numeric[2]), Number(numeric[3]), now)
 }
 
 function isTpWord(text: string) {
@@ -257,11 +284,34 @@ function instrumentPrices(nums: number[]) {
 function extractPrices(chunk: string): { open?: number; close?: number } {
   const source = tidy(chunk)
   const afterAt = source.split(/\bat\b/i)[1]
-  const haystack = afterAt ?? source
-  const nums = [...haystack.matchAll(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d{2,5}/g)]
-    .map((match) => Number(match[0].replaceAll(",", "")))
-    .filter((value) => Number.isFinite(value) && value >= 8)
-  const prices = instrumentPrices(nums)
+  const priceRe = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d{2,5}/g
+  const parse = (match: string) => {
+    const value = Number(match.replaceAll(",", ""))
+    return Number.isFinite(value) && value >= 8 ? value : undefined
+  }
+
+  if (afterAt) {
+    // Open is glued to "at". If OCR mangled it, a later right-side figure is close only.
+    const matches = [...afterAt.matchAll(priceRe)]
+    const first = matches[0]
+    const openRaw = first && (first.index ?? 0) <= 4 ? parse(first[0]) : undefined
+    const open = openRaw != null ? instrumentPrices([openRaw])[0] : undefined
+    const later = instrumentPrices(
+      matches
+        .slice(open != null ? 1 : 0)
+        .map((match) => parse(match[0]))
+        .filter((value): value is number => value != null),
+    ).filter((value) => open == null || Math.abs(value - open) > 0.0005)
+    if (open != null) return later[0] != null ? { open, close: later[0] } : { open }
+    if (later[0] != null) return { close: later[0] }
+    return {}
+  }
+
+  const prices = instrumentPrices(
+    [...source.matchAll(priceRe)]
+      .map((match) => parse(match[0]))
+      .filter((value): value is number => value != null),
+  )
   if (prices.length >= 2) return { open: prices[0], close: prices[1] }
   if (prices.length === 1) return { open: prices[0] }
   return {}
@@ -485,13 +535,28 @@ function extractTrades(body: string, lines: Line[], headerPnl = 0): ExtractedTra
   })
 }
 
-function explodeByHeaders(line: Line): Line[] {
-  const parts = line.text
-    .split(HEADER_ANYWHERE)
-    .map((part) => tidy(part))
-    .filter(Boolean)
-  if (parts.length <= 1) return [{ ...line, text: tidy(line.text) }]
-  return parts.map((text) => ({ ...line, text }))
+function explodeByHeaders(line: Line, now: Date): Line[] {
+  const text = tidy(line.text)
+  HEADER_FIND.lastIndex = 0
+  const cuts: number[] = []
+  for (const match of text.matchAll(HEADER_FIND)) {
+    if (!resolveDate(match[1], now)) continue
+    const at = match.index ?? 0
+    if (at > 0) cuts.push(at)
+  }
+  if (!cuts.length) return [{ ...line, text }]
+
+  const parts: string[] = []
+  let start = 0
+  for (const at of cuts) {
+    const chunk = tidy(text.slice(start, at))
+    if (chunk) parts.push(chunk)
+    start = at
+  }
+  const tail = tidy(text.slice(start))
+  if (tail) parts.push(tail)
+  if (parts.length <= 1) return [{ ...line, text }]
+  return parts.map((part) => ({ ...line, text: part }))
 }
 
 function wordsInRange(words: OcrWord[], y0: number, y1: number) {
@@ -519,7 +584,7 @@ export function parseExnessHistory(
         .filter(Boolean)
         .map((line) => ({ text: line, y: 0, cy: 0, words: [] as OcrWord[] }))
 
-  const lines = rawLines.flatMap(explodeByHeaders)
+  const lines = rawLines.flatMap((line) => explodeByHeaders(line, now))
   const colorHits = options?.color ? findColoredBadgeRows(options.color) : undefined
   const actionYs = (options?.words ?? [])
     .filter((word) => isActionWord(word.text))
@@ -533,12 +598,10 @@ export function parseExnessHistory(
   for (const line of lines) {
     const cleaned = line.text
     if (!cleaned || NOISE.test(cleaned)) continue
-    const header = matchHeader(cleaned)
+    const header = matchHeader(cleaned, now)
     if (header) {
-      const date = resolveDate(header.label, now)
-      if (!date) continue
       groups.push({
-        date,
+        date: header.date,
         label: header.label[0].toUpperCase() + header.label.slice(1),
         pnl: parseMoneyAll(header.rest).at(-1) ?? 0,
         rest: header.rest,
