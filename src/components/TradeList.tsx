@@ -203,7 +203,7 @@ export function TradeList({ trades, query, result, onQuery, onResult }: Props) {
               </div>
               <ul className="grid gap-2 p-2 sm:p-3">
                 {day.trades.map((trade) => (
-                  <li key={trade.id}>
+                  <li key={trade.id} className="min-w-0 overflow-hidden">
                     <TradeDetailCard
                       trade={{
                         symbol: trade.symbol,

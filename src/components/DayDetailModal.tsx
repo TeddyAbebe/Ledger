@@ -40,7 +40,7 @@ export function DayDetailModal({ date, trades, onClose, onClearDay }: Props) {
         className="absolute inset-0 bg-black/65"
         onClick={onClose}
       />
-      <section className="relative z-10 flex max-h-[88svh] w-full flex-col rounded-t-3xl border border-line bg-surface sm:max-w-lg sm:rounded-3xl">
+      <section className="relative z-10 flex max-h-[88svh] w-full max-w-full flex-col overflow-hidden rounded-t-3xl border border-line bg-surface sm:max-w-lg sm:rounded-3xl">
         <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-4 sm:px-5">
           <div>
             <p className="text-[11px] uppercase tracking-[0.16em] text-faint">Day details</p>
@@ -90,7 +90,7 @@ export function DayDetailModal({ date, trades, onClose, onClearDay }: Props) {
           ) : (
             <ul className="grid gap-3">
               {summary.trades.map((trade) => (
-                <li key={trade.id}>
+                <li key={trade.id} className="min-w-0 overflow-hidden">
                   <TradeDetailCard
                     trade={{
                       symbol: trade.symbol,
