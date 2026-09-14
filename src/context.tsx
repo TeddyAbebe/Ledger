@@ -22,6 +22,7 @@ type JournalValue = {
   settings: Settings
   stats: ReturnType<typeof computeStats>
   saveTrade: (input: Draft) => string
+  setTradeImageUrl: (id: string, imageUrl: string | undefined) => void
   deleteTrade: (id: string) => void
   clearDay: (date: string) => void
   setSettings: (next: Settings) => void
@@ -183,6 +184,20 @@ export function JournalProvider({ children }: { children: ReactNode }) {
     return id
   }
 
+  function setTradeImageUrl(id: string, imageUrl: string | undefined) {
+    setTrades((current) =>
+      current.map((trade) => {
+        if (trade.id !== id) return trade
+        if (!imageUrl) {
+          const next = { ...trade }
+          delete next.imageUrl
+          return next
+        }
+        return { ...trade, imageUrl }
+      }),
+    )
+  }
+
   function deleteTrade(id: string) {
     setTrades((current) => current.filter((t) => t.id !== id))
   }
@@ -279,6 +294,7 @@ export function JournalProvider({ children }: { children: ReactNode }) {
         settings,
         stats,
         saveTrade,
+        setTradeImageUrl,
         deleteTrade,
         clearDay,
         setSettings: setSettingsState,

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react"
+import { useJournal } from "../context"
 import { formatDate, formatPnl, signedPnl, summarizeDay } from "../lib"
 import type { Trade } from "../types"
 import { TradeDetailCard } from "./TradeDetailCard"
+import { TradeScreenshot } from "./TradeScreenshot"
 
 type Props = {
   date: string
@@ -11,6 +13,7 @@ type Props = {
 }
 
 export function DayDetailModal({ date, trades, onClose, onClearDay }: Props) {
+  const { setTradeImageUrl } = useJournal()
   const summary = summarizeDay(trades)
   const [confirming, setConfirming] = useState(false)
 
@@ -100,6 +103,12 @@ export function DayDetailModal({ date, trades, onClose, onClearDay }: Props) {
                       kind: trade.kind,
                     }}
                   />
+                  {trade.kind !== "day-total" ? (
+                    <TradeScreenshot
+                      url={trade.imageUrl}
+                      onSave={(imageUrl) => setTradeImageUrl(trade.id, imageUrl)}
+                    />
+                  ) : null}
                 </li>
               ))}
             </ul>

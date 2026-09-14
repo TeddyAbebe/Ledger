@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useJournal } from "../context"
 import { formatDate, formatPnl, signedPnl } from "../lib"
 import type { ResultFilter, Trade } from "../types"
 import { TradeDetailCard } from "./TradeDetailCard"
+import { TradeScreenshot } from "./TradeScreenshot"
 
 const DAYS_PER_PAGE = 5
 
@@ -130,6 +132,7 @@ function Pager({
 }
 
 export function TradeList({ trades, query, result, onQuery, onResult }: Props) {
+  const { setTradeImageUrl } = useJournal()
   const [page, setPage] = useState(0)
   const topRef = useRef<HTMLDivElement>(null)
   const groups = useMemo(() => groupByDate(trades), [trades])
@@ -213,6 +216,12 @@ export function TradeList({ trades, query, result, onQuery, onResult }: Props) {
                         kind: trade.kind,
                       }}
                     />
+                    {trade.kind !== "day-total" ? (
+                      <TradeScreenshot
+                        url={trade.imageUrl}
+                        onSave={(imageUrl) => setTradeImageUrl(trade.id, imageUrl)}
+                      />
+                    ) : null}
                   </li>
                 ))}
               </ul>
