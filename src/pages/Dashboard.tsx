@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { DayDetailModal } from "../components/DayDetailModal"
 import { PnLCalendar } from "../components/PnLCalendar"
@@ -6,6 +6,7 @@ import { WeekDetailModal } from "../components/WeekDetailModal"
 import { useJournal } from "../context"
 import {
   buildMonth,
+  firstTradeDate,
   formatCash,
   formatMonthLabel,
   monthCount,
@@ -17,11 +18,37 @@ import {
 export function DashboardPage() {
   const { trades, settings, clearDay } = useJournal()
   const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth())
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth()
+  const startIso = useMemo(() => firstTradeDate(trades), [trades])
+  const startYear = startIso ? Number(startIso.slice(0, 4)) : null
+  const startMonth = startIso ? Number(startIso.slice(5, 7)) - 1 : null
+  const [year, setYear] = useState(currentYear)
+  const [month, setMonth] = useState(currentMonth)
   const [selected, setSelected] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [openWeek, setOpenWeek] = useState<number | null>(null)
+
+  const atStartMonth =
+    startYear != null && startMonth != null && year === startYear && month === startMonth
+  const atCurrentMonth = year === currentYear && month === currentMonth
+
+  // Keep the view between first trade month and the current month.
+  useEffect(() => {
+    if (
+      startYear != null &&
+      startMonth != null &&
+      (year < startYear || (year === startYear && month < startMonth))
+    ) {
+      setYear(startYear)
+      setMonth(startMonth)
+      return
+    }
+    if (year > currentYear || (year === currentYear && month > currentMonth)) {
+      setYear(currentYear)
+      setMonth(currentMonth)
+    }
+  }, [startYear, startMonth, year, month, currentYear, currentMonth])
 
   const weeks = useMemo(() => buildMonth(year, month, trades), [year, month, trades])
   const net = monthPnl(year, month, trades)
@@ -30,6 +57,8 @@ export function DashboardPage() {
   const selectedTrades = selected ? tradesOnDate(trades, selected) : []
 
   function shift(delta: number) {
+    if (delta < 0 && atStartMonth) return
+    if (delta > 0 && atCurrentMonth) return
     const next = new Date(year, month + delta, 1)
     setYear(next.getFullYear())
     setMonth(next.getMonth())
@@ -54,7 +83,8 @@ export function DashboardPage() {
             <button
               type="button"
               onClick={() => shift(-1)}
-              className="grid size-9 place-items-center rounded-full border border-line text-muted transition hover:border-gold/40 hover:text-ink"
+              disabled={atStartMonth}
+              className="grid size-9 place-items-center rounded-full border border-line text-muted transition hover:border-gold/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-line disabled:hover:text-muted"
               aria-label="Previous month"
             >
               ‹
@@ -65,7 +95,8 @@ export function DashboardPage() {
             <button
               type="button"
               onClick={() => shift(1)}
-              className="grid size-9 place-items-center rounded-full border border-line text-muted transition hover:border-gold/40 hover:text-ink sm:ml-1"
+              disabled={atCurrentMonth}
+              className="grid size-9 place-items-center rounded-full border border-line text-muted transition hover:border-gold/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-line disabled:hover:text-muted sm:ml-1"
               aria-label="Next month"
             >
               ›

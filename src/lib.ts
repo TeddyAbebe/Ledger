@@ -312,11 +312,22 @@ export type CalendarWeek = {
   count: number
 }
 
+export function firstTradeDate(trades: Trade[]): string | null {
+  let earliest: string | null = null
+  for (const trade of trades) {
+    if (!trade.date) continue
+    if (!earliest || trade.date < earliest) earliest = trade.date
+  }
+  return earliest
+}
+
 export function buildMonth(year: number, month: number, trades: Trade[]): CalendarWeek[] {
   const first = new Date(year, month, 1)
   const mondayOffset = (first.getDay() + 6) % 7
   const cursor = new Date(year, month, 1 - mondayOffset)
   const grouped = new Map<string, Trade[]>()
+  const startIso = firstTradeDate(trades)
+  const endIso = todayIso()
 
   for (const trade of trades) {
     const list = grouped.get(trade.date) ?? []
@@ -329,8 +340,11 @@ export function buildMonth(year: number, month: number, trades: Trade[]): Calend
     const days: DayCell[] = []
     for (let d = 0; d < 7; d++) {
       const iso = toIsoDate(cursor)
-      const inMonth = cursor.getMonth() === month
-      // Days from the neighbouring months stay blank, so their P&L belongs to that month only.
+      // Blank neighbouring months, days before first trade, and future days.
+      const inMonth =
+        cursor.getMonth() === month &&
+        (!startIso || iso >= startIso) &&
+        iso <= endIso
       const stats = inMonth ? grouped.get(iso) : undefined
       const summary = stats ? summarizeDay(stats) : { pnl: 0, count: 0 }
       days.push({
