@@ -13,30 +13,46 @@ type DraftDay = {
   trades: ExtractedTrade[]
 }
 
+type Shot = {
+  id: string
+  name: string
+  preview: string
+}
+
 export function ScreenshotImport() {
   const { importScannedDays } = useJournal()
   const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [preview, setPreview] = useState<string | null>(null)
+  const pickMode = useRef<"replace" | "append">("replace")
+  const [shots, setShots] = useState<Shot[]>([])
   const [status, setStatus] = useState<"idle" | "reading" | "review" | "error">("idle")
   const [progress, setProgress] = useState(0)
+  const [scanIndex, setScanIndex] = useState(0)
+  const [scanTotal, setScanTotal] = useState(0)
   const [error, setError] = useState("")
   const [days, setDays] = useState<DraftDay[]>([])
-  const [lightbox, setLightbox] = useState(false)
+  const [lightbox, setLightbox] = useState<string | null>(null)
   const [scannedText, setScannedText] = useState("")
+
+  function openPicker(mode: "replace" | "append") {
+    pickMode.current = mode
+    inputRef.current?.click()
+  }
 
   useEffect(() => {
     return () => {
-      if (preview) URL.revokeObjectURL(preview)
+      for (const shot of shots) URL.revokeObjectURL(shot.preview)
     }
-  }, [preview])
+    // Only revoke on unmount; shots are managed in handlers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!lightbox) return
     const prev = document.body.style.overflow
     document.body.style.overflow = "hidden"
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLightbox(false)
+      if (e.key === "Escape") setLightbox(null)
     }
     window.addEventListener("keydown", onKey)
     return () => {
@@ -45,31 +61,101 @@ export function ScreenshotImport() {
     }
   }, [lightbox])
 
-  async function handleFile(file: File) {
-    if (file.type && !file.type.startsWith("image/")) {
-      setError("Please choose a screenshot image.")
+  async function handleFiles(fileList: FileList | File[]) {
+    const files = [...fileList].filter((file) => !file.type || file.type.startsWith("image/"))
+    if (!files.length) {
+      setError("Please choose screenshot images.")
       setStatus("error")
       return
     }
+
+    const nextShots = files.map((file) => ({
+      id: crypto.randomUUID(),
+      name: file.name || "screenshot",
+      preview: URL.createObjectURL(file),
+    }))
+
     setError("")
-    setLightbox(false)
-    setPreview((current) => {
-      if (current) URL.revokeObjectURL(current)
-      return URL.createObjectURL(file)
+    setLightbox(null)
+    setShots((current) => {
+      for (const shot of current) URL.revokeObjectURL(shot.preview)
+      return nextShots
     })
     setStatus("reading")
     setProgress(0)
+    setScanIndex(0)
+    setScanTotal(files.length)
     setDays([])
     setScannedText("")
+
+    const allDays: ExtractedDay[] = []
+    const texts: string[] = []
+
     try {
-      const { days: extracted, text } = await readExnessScreenshot(file, setProgress)
-      setScannedText(text.trim())
-      setDays(extracted.map(toDraft))
-      setStatus(extracted.length ? "review" : "error")
-      if (!extracted.length) setError("Couldn’t read trades from that screenshot. Try a tighter crop of the history list.")
+      for (const [index, file] of files.entries()) {
+        setScanIndex(index)
+        const { days: extracted, text } = await readExnessScreenshot(file, (value) => {
+          setProgress((index + value) / files.length)
+        })
+        allDays.push(...extracted)
+        if (text.trim()) texts.push(text.trim())
+      }
+
+      const merged = mergeDraftDays(allDays.map(toDraft))
+      setScannedText(texts.join("\n\n---\n\n"))
+      setDays(merged)
+      setStatus(merged.length ? "review" : "error")
+      if (!merged.length) {
+        setError("Couldn’t read trades from those screenshots. Try tighter crops of the history list.")
+      }
     } catch (err) {
       setStatus("error")
-      setError(err instanceof Error ? err.message : "Could not read that screenshot.")
+      setError(err instanceof Error ? err.message : "Could not read those screenshots.")
+    }
+  }
+
+  async function addMoreFiles(fileList: FileList | File[]) {
+    const files = [...fileList].filter((file) => !file.type || file.type.startsWith("image/"))
+    if (!files.length) return
+
+    const nextShots = files.map((file) => ({
+      id: crypto.randomUUID(),
+      name: file.name || "screenshot",
+      preview: URL.createObjectURL(file),
+    }))
+
+    setError("")
+    setShots((current) => [...current, ...nextShots])
+    setStatus("reading")
+    setProgress(0)
+    setScanIndex(0)
+    setScanTotal(files.length)
+
+    const allDays: ExtractedDay[] = []
+    const texts: string[] = []
+
+    try {
+      for (const [index, file] of files.entries()) {
+        setScanIndex(index)
+        const { days: extracted, text } = await readExnessScreenshot(file, (value) => {
+          setProgress((index + value) / files.length)
+        })
+        allDays.push(...extracted)
+        if (text.trim()) texts.push(text.trim())
+      }
+
+      const merged = mergeDraftDays([...days, ...allDays.map(toDraft)])
+      setScannedText((current) =>
+        [current, ...texts].filter(Boolean).join("\n\n---\n\n"),
+      )
+      setDays(merged)
+      setStatus(merged.length ? "review" : "error")
+      if (!merged.length) {
+        setError("Couldn’t read trades from those screenshots. Try tighter crops of the history list.")
+      }
+    } catch (err) {
+      setStatus("error")
+      setError(err instanceof Error ? err.message : "Could not read those screenshots.")
     }
   }
 
@@ -95,10 +181,10 @@ export function ScreenshotImport() {
   return (
     <div className="grid gap-4 rounded-3xl border border-line bg-surface/70 p-4 sm:p-6">
       <div>
-        <p className="font-display text-xl text-ink">Upload Exness screenshot</p>
+        <p className="font-display text-xl text-ink">Upload Exness screenshots</p>
         <p className="mt-1 text-sm text-muted">
-          From Accounts history, screenshot the trade cards. Ledger reads symbol, lots, prices, P/L,
-          and whether TP or SL was hit.
+          Select one or more history screenshots. Ledger reads each shot and merges the trades by
+          date.
         </p>
       </div>
 
@@ -106,70 +192,101 @@ export function ScreenshotImport() {
         ref={inputRef}
         type="file"
         accept="image/*"
+        multiple
         className="sr-only"
         onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) void handleFile(file)
+          const files = e.target.files
+          if (!files?.length) return
+          if (pickMode.current === "append" && shots.length) void addMoreFiles(files)
+          else void handleFiles(files)
           e.target.value = ""
         }}
       />
 
-      {preview ? (
+      {shots.length ? (
         <div className="rounded-2xl border border-line bg-white/[0.03] p-3">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setLightbox(true)}
-              className="shrink-0 overflow-hidden rounded-xl border border-line bg-black/40"
-              aria-label="View screenshot full size"
-            >
-              <img
-                src={preview}
-                alt=""
-                className={`h-24 w-16 object-contain sm:h-28 sm:w-[4.5rem] ${scanning ? "opacity-60" : ""}`}
-              />
-            </button>
-            <div className="min-w-0 flex-1">
-              {scanning ? (
-                <>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-sm font-medium text-ink">{scanLabel(progress)}</p>
-                    <p className="font-mono text-sm tabular-nums text-gold">{Math.round(progress * 100)}%</p>
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted">This can take a few seconds on the first scan.</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-medium text-ink">Uploaded screenshot</p>
-                  <p className="mt-0.5 text-xs text-muted">Tap the photo to view full size</p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {shots.map((shot, index) => (
+              <button
+                key={shot.id}
+                type="button"
+                onClick={() => setLightbox(shot.preview)}
+                className="relative shrink-0 overflow-hidden rounded-xl border border-line bg-black/40"
+                aria-label={`View screenshot ${index + 1} full size`}
+              >
+                <img
+                  src={shot.preview}
+                  alt=""
+                  className={`h-24 w-16 object-contain sm:h-28 sm:w-[4.5rem] ${scanning ? "opacity-60" : ""}`}
+                />
+                <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+                  {index + 1}/{shots.length}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-3 min-w-0">
+            {scanning ? (
+              <>
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-sm font-medium text-ink">
+                    {scanLabel(progress)} · shot {Math.min(scanIndex + 1, scanTotal)} of {scanTotal}
+                  </p>
+                  <p className="font-mono text-sm tabular-nums text-gold">
+                    {Math.round(progress * 100)}%
+                  </p>
+                </div>
+                <p className="mt-0.5 text-xs text-muted">
+                  Scanning each screenshot in order. First run can take longer.
+                </p>
+                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/[0.08]">
+                  <div
+                    className="scan-bar-fill h-full rounded-full bg-gold shadow-[0_0_16px_color-mix(in_srgb,var(--accent)_55%,transparent)] transition-[width] duration-300 ease-out"
+                    style={{ width: `${Math.max(6, Math.round(progress * 100))}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-ink">
+                    {shots.length} {shots.length === 1 ? "screenshot" : "screenshots"} uploaded
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">Tap a photo to view full size</p>
+                </div>
+                <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={() => inputRef.current?.click()}
-                    className="mt-2 text-xs font-medium text-gold hover:underline"
+                    disabled={scanning}
+                    onClick={() => openPicker("append")}
+                    className="text-xs font-medium text-gold hover:underline disabled:opacity-50"
                   >
-                    Replace photo
+                    Add more
                   </button>
-                </>
-              )}
-            </div>
+                  <button
+                    type="button"
+                    disabled={scanning}
+                    onClick={() => openPicker("replace")}
+                    className="text-xs font-medium text-muted hover:text-ink disabled:opacity-50"
+                  >
+                    Replace all
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-          {scanning ? (
-            <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/[0.08]">
-              <div
-                className="scan-bar-fill h-full rounded-full bg-gold shadow-[0_0_16px_color-mix(in_srgb,var(--accent)_55%,transparent)] transition-[width] duration-300 ease-out"
-                style={{ width: `${Math.max(6, Math.round(progress * 100))}%` }}
-              />
-            </div>
-          ) : null}
         </div>
       ) : (
         <button
           type="button"
-          onClick={() => inputRef.current?.click()}
+          onClick={() => openPicker("replace")}
           className="grid cursor-pointer place-items-center rounded-2xl border border-dashed border-line px-4 py-10 text-center hover:border-gold/40 hover:bg-white/[0.03]"
         >
-          <span className="text-sm font-medium text-ink">Tap to upload screenshot</span>
-          <span className="mt-1 text-xs text-muted">PNG or JPG from the Exness history tab</span>
+          <span className="text-sm font-medium text-ink">Tap to upload screenshots</span>
+          <span className="mt-1 text-xs text-muted">
+            PNG or JPG · select multiple if the day spans more than one shot
+          </span>
         </button>
       )}
 
@@ -189,8 +306,8 @@ export function ScreenshotImport() {
       {status === "review" && days.length > 0 ? (
         <div className="grid gap-4">
           <p className="text-sm text-muted">
-            Check each trade, then save. Colored TP/SL means that target was hit; grey means a
-            manual close.
+            Check each trade, then save. Trades from every screenshot are merged by date. Colored
+            TP/SL means that target was hit; grey means a manual close.
           </p>
           {days.map((day, index) => (
             <div key={`${day.date}-${index}`} className="grid gap-3 rounded-2xl border border-line p-3">
@@ -215,7 +332,7 @@ export function ScreenshotImport() {
               {day.trades.length ? (
                 <ul className="grid gap-2">
                   {day.trades.map((trade, tradeIndex) => (
-                    <li key={`${trade.symbol}-${tradeIndex}`}>
+                    <li key={`${trade.symbol}-${tradeIndex}-${trade.pnl}`}>
                       <TradeDetailCard
                         trade={{
                           symbol: trade.symbol,
@@ -248,23 +365,23 @@ export function ScreenshotImport() {
         </button>
       ) : null}
 
-      {lightbox && preview ? (
+      {lightbox ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button
             type="button"
             aria-label="Close screenshot"
             className="absolute inset-0 bg-black/80"
-            onClick={() => setLightbox(false)}
+            onClick={() => setLightbox(null)}
           />
           <div className="relative z-10 max-h-[92svh] w-full max-w-lg">
             <img
-              src={preview}
+              src={lightbox}
               alt="Uploaded screenshot"
               className="max-h-[92svh] w-full rounded-2xl object-contain"
             />
             <button
               type="button"
-              onClick={() => setLightbox(false)}
+              onClick={() => setLightbox(null)}
               className="absolute -top-3 -right-3 grid size-9 place-items-center rounded-full border border-line bg-surface text-lg text-ink"
               aria-label="Close"
             >
@@ -278,7 +395,7 @@ export function ScreenshotImport() {
 }
 
 function scanLabel(progress: number) {
-  if (progress < 0.18) return "Preparing image"
+  if (progress < 0.18) return "Preparing images"
   if (progress < 0.92) return "Reading trades"
   return "Matching results"
 }
@@ -290,4 +407,50 @@ function toDraft(day: ExtractedDay): DraftDay {
     dateGuessed: Boolean(day.dateGuessed),
     trades: day.trades,
   }
+}
+
+function tradeKey(trade: ExtractedTrade) {
+  return [
+    trade.symbol,
+    trade.side,
+    trade.lots,
+    trade.pnl,
+    trade.openPrice ?? "",
+    trade.closePrice ?? "",
+    trade.closeReason ?? "",
+  ].join("|")
+}
+
+function mergeDraftDays(incoming: DraftDay[]): DraftDay[] {
+  const byDate = new Map<string, DraftDay>()
+
+  for (const day of incoming) {
+    const existing = byDate.get(day.date)
+    if (!existing) {
+      byDate.set(day.date, {
+        date: day.date,
+        dateGuessed: day.dateGuessed,
+        trades: [...day.trades],
+        pnl: 0,
+      })
+      continue
+    }
+
+    const known = new Set(existing.trades.map(tradeKey))
+    for (const trade of day.trades) {
+      const key = tradeKey(trade)
+      if (known.has(key)) continue
+      known.add(key)
+      existing.trades.push(trade)
+    }
+    // Prefer a concrete date header over a guessed one.
+    if (existing.dateGuessed && !day.dateGuessed) existing.dateGuessed = false
+  }
+
+  return [...byDate.values()]
+    .map((day) => ({
+      ...day,
+      pnl: day.trades.reduce((sum, trade) => sum + trade.pnl, 0),
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date))
 }
