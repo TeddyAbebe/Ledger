@@ -67,6 +67,8 @@ const SYMBOL_TABLE: [RegExp, string][] = [
 
 function tidy(text: string) {
   return text
+    // OCR often turns a real minus into other dash glyphs.
+    .replace(/[−–—‐‑‒]/g, "-")
     .replace(/(\d),\s+(\d)/g, "$1,$2")
     .replace(/(\d)\s+\.\s*(\d)/g, "$1.$2")
     .replace(/(\d)\s+(\d{2})\s*(lot)/gi, "$1.$2 $3")
@@ -94,12 +96,32 @@ export function findSymbol(text: string): string | null {
 }
 
 function parseMoneyAll(chunk: string): number[] {
+  const source = tidy(chunk)
   const values: number[] = []
-  const re = /([+\-−–])\s*(\d{1,3}(?:,\d{3})*|\d+)(?:[.,](\d{1,2}))\s*(USD|EUR|GBP)?/gi
-  for (const match of tidy(chunk).matchAll(re)) {
-    const sign = match[1] === "+" ? 1 : -1
-    values.push(sign * Number(`${match[2].replaceAll(",", "")}.${match[3]}`))
+  const seen = new Set<string>()
+
+  function push(sign: number, whole: string, cents: string) {
+    const value = sign * Number(`${whole.replaceAll(",", "")}.${cents}`)
+    if (!Number.isFinite(value)) return
+    const key = value.toFixed(2)
+    if (seen.has(key)) return
+    seen.add(key)
+    values.push(value)
   }
+
+  // Exness always prints an explicit "+" on wins. Losses use "-".
+  const signed = /([+-])\s*(\d{1,3}(?:,\d{3})*|\d+)[.,](\d{1,2})\s*(USD|EUR|GBP)?/gi
+  for (const match of source.matchAll(signed)) {
+    push(match[1] === "+" ? 1 : -1, match[2], match[3])
+  }
+
+  // When OCR drops the minus on a red loss, the bare "8.80 USD" is still a loss —
+  // wins never appear without a leading "+".
+  const unsignedLoss = /(?<![+\-\d.,])(\d{1,3}(?:,\d{3})*|\d+)[.,](\d{2})\s*USD\b/gi
+  for (const match of source.matchAll(unsignedLoss)) {
+    push(-1, match[1], match[2])
+  }
+
   return values
 }
 
@@ -522,12 +544,20 @@ function extractTrades(body: string, lines: Line[], headerPnl = 0): ExtractedTra
     const before = source.slice(Math.max(prevEnd, actionAt - 120), actionAt)
     const after = source.slice(actionAt, nextAt)
     const prices = extractPrices(/\bat\b/i.test(after) ? after : `${before} ${after}`)
-    const pnls = parseMoneyAll(before).filter((value) => Math.abs(value - headerPnl) > 0.009)
+    // P&L sits on the symbol row (before). Fall back to a signed amount after the
+    // action only when the open-price row failed to yield one.
+    const beforePnls = parseMoneyAll(before).filter((value) => Math.abs(value - headerPnl) > 0.009)
+    const afterPnls = parseMoneyAll(after).filter((value) => Math.abs(value - headerPnl) > 0.009)
+    const pnl =
+      beforePnls.at(-1) ??
+      parseMoneyAll(before).at(-1) ??
+      afterPnls.at(-1) ??
+      0
     return {
-      symbol: findSymbol(before) ?? "UNKNOWN",
+      symbol: findSymbol(before) ?? findSymbol(after) ?? "UNKNOWN",
       side: /sell|sel/i.test(match[1]) ? "sell" : "buy",
       lots: parseLots(match[2]),
-      pnl: pnls.at(-1) ?? parseMoneyAll(before).at(-1) ?? 0,
+      pnl,
       openPrice: prices.open,
       closePrice: prices.close,
       y: yForSnippet(lines, match[0]),

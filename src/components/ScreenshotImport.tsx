@@ -411,15 +411,37 @@ function toDraft(day: ExtractedDay): DraftDay {
 }
 
 function tradeKey(trade: ExtractedTrade) {
+  // P&L is left out so a lost-minus OCR (0) can be replaced by the correct negative.
   return [
     trade.symbol,
     trade.side,
     trade.lots,
-    trade.pnl,
     trade.openPrice ?? "",
     trade.closePrice ?? "",
-    trade.closeReason ?? "",
   ].join("|")
+}
+
+function preferTrade(current: ExtractedTrade, incoming: ExtractedTrade) {
+  if (Math.abs(incoming.pnl) > Math.abs(current.pnl)) return incoming
+  if (incoming.pnl !== 0 && current.pnl === 0) return incoming
+  if (incoming.closeReason && !current.closeReason) {
+    return { ...current, closeReason: incoming.closeReason, tpHit: incoming.tpHit, slHit: incoming.slHit }
+  }
+  if ((incoming.openPrice != null || incoming.closePrice != null) && current.openPrice == null && current.closePrice == null) {
+    return {
+      ...current,
+      openPrice: incoming.openPrice ?? current.openPrice,
+      closePrice: incoming.closePrice ?? current.closePrice,
+    }
+  }
+  return {
+    ...current,
+    openPrice: current.openPrice ?? incoming.openPrice,
+    closePrice: current.closePrice ?? incoming.closePrice,
+    closeReason: current.closeReason ?? incoming.closeReason,
+    tpHit: current.tpHit || incoming.tpHit,
+    slHit: current.slHit || incoming.slHit,
+  }
 }
 
 function mergeDraftDays(incoming: DraftDay[]): DraftDay[] {
@@ -449,13 +471,13 @@ function mergeDraftDays(incoming: DraftDay[]): DraftDay[] {
       continue
     }
 
-    const known = new Set(existing.trades.map(tradeKey))
+    const byKey = new Map(existing.trades.map((trade) => [tradeKey(trade), trade]))
     for (const trade of day.trades) {
       const key = tradeKey(trade)
-      if (known.has(key)) continue
-      known.add(key)
-      existing.trades.push(trade)
+      const prev = byKey.get(key)
+      byKey.set(key, prev ? preferTrade(prev, trade) : trade)
     }
+    existing.trades = [...byKey.values()]
     // Prefer a concrete date header over a guessed one.
     if (existing.dateGuessed && !day.dateGuessed) existing.dateGuessed = false
   }
