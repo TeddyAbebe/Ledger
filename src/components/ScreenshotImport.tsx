@@ -306,7 +306,8 @@ export function ScreenshotImport() {
       {status === "review" && days.length > 0 ? (
         <div className="grid gap-4">
           <p className="text-sm text-muted">
-            Check each trade, then save. Trades from every screenshot are merged by date. Colored
+            Check each trade, then save. Trades from every screenshot are merged by date — if a
+            shot has no date header, its trades join the dated day from the other shots. Colored
             TP/SL means that target was hit; grey means a manual close.
           </p>
           {days.map((day, index) => (
@@ -422,9 +423,21 @@ function tradeKey(trade: ExtractedTrade) {
 }
 
 function mergeDraftDays(incoming: DraftDay[]): DraftDay[] {
+  // Continuation shots often omit the date header. If this upload already has
+  // exactly one concrete date (e.g. Oct 8), attach those undated trades there
+  // instead of inventing "today".
+  const knownDates = [
+    ...new Set(incoming.filter((day) => !day.dateGuessed).map((day) => day.date)),
+  ]
+  const inheritDate = knownDates.length === 1 ? knownDates[0] : null
+  const normalized = incoming.map((day) => {
+    if (!day.dateGuessed || !inheritDate) return day
+    return { ...day, date: inheritDate, dateGuessed: false }
+  })
+
   const byDate = new Map<string, DraftDay>()
 
-  for (const day of incoming) {
+  for (const day of normalized) {
     const existing = byDate.get(day.date)
     if (!existing) {
       byDate.set(day.date, {
