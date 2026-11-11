@@ -50,20 +50,38 @@ const ACTION_LOOSE =
 const NOISE = /^(accounts|trade|insights|performance|profile|history)$/i
 
 const SYMBOL_TABLE: [RegExp, string][] = [
-  [/X\s*A\s*[U0]\s*[\/|]?\s*U\s*S\s*[D0]/i, "XAUUSD"],
+  [/X\s*A\s*[U0]\s*[\/|J]?\s*U\s*S\s*[D0]/i, "XAUUSD"],
   [/XAUUSD|XA[U0]USD|XAUUS[D0]/i, "XAUUSD"],
-  [/X\s*A\s*G\s*[\/|]?\s*U\s*S\s*[D0]/i, "XAGUSD"],
+  [/X\s*A\s*G\s*[\/|J]?\s*U\s*S\s*[D0]/i, "XAGUSD"],
   [/XAGUSD|XAGUS[D0]/i, "XAGUSD"],
-  [/E\s*U\s*R\s*[\/|]?\s*U\s*S\s*D/i, "EURUSD"],
-  [/G\s*B\s*P\s*[\/|]?\s*U\s*S\s*D/i, "GBPUSD"],
-  [/U\s*S\s*D\s*[\/|]?\s*J\s*P\s*Y/i, "USDJPY"],
-  [/B\s*T\s*C\s*[\/|]?\s*U\s*S\s*D/i, "BTCUSD"],
-  [/E\s*T\s*H\s*[\/|]?\s*U\s*S\s*D/i, "ETHUSD"],
+  [/A\s*U\s*D\s*[\/|J]?\s*U\s*S\s*D/i, "AUDUSD"],
+  [/E\s*U\s*R\s*[\/|J]?\s*U\s*S\s*D/i, "EURUSD"],
+  [/G\s*B\s*P\s*[\/|J]?\s*U\s*S\s*D/i, "GBPUSD"],
+  [/G\s*B\s*P\s*[\/|J]?\s*J\s*P\s*Y/i, "GBPJPY"],
+  // OCR: "eBPUPY" / "EBPUPY" for GBP/JPY
+  [/[e€]?\s*B\s*P\s*[U\/|J]?\s*P?\s*Y/i, "GBPJPY"],
+  [/U\s*S\s*D\s*[\/|J]?\s*J\s*P\s*Y/i, "USDJPY"],
+  [/B\s*T\s*C\s*[\/|J]?\s*U\s*S\s*D/i, "BTCUSD"],
+  [/E\s*T\s*H\s*[\/|J]?\s*U\s*S\s*D/i, "ETHUSD"],
   [/NAS\s*100|US\s*100|NDX/i, "NAS100"],
   [/US\s*30|DJ30|DJI/i, "US30"],
   [/US\s*500|SPX/i, "US500"],
   [/USOIL|WTI/i, "USOIL"],
 ]
+
+const SYMBOL_CODES = [
+  "XAGUSD",
+  "XAUUSD",
+  "AUDUSD",
+  "EURUSD",
+  "GBPUSD",
+  "GBPJPY",
+  "USDJPY",
+  "BTCUSD",
+  "ETHUSD",
+  "USOIL",
+  "NAS100",
+] as const
 
 function tidy(text: string) {
   return text
@@ -82,16 +100,43 @@ export function findSymbol(text: string): string | null {
     .replace(/[^A-Z0-9]/g, "")
     .replaceAll("US0", "USD")
     .replaceAll("XA0", "XAU")
-  for (const code of ["XAGUSD", "XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "ETHUSD", "USOIL", "NAS100"]) {
+    // OCR often substitutes "J" or "J" for the "/" in AUD/USD, GBP/USD, etc.
+    .replaceAll("AUDJUSD", "AUDUSD")
+    .replaceAll("EURJUSD", "EURUSD")
+    .replaceAll("GBPJUSD", "GBPUSD")
+    .replaceAll("USDJJPY", "USDJPY")
+    .replaceAll("GBPJJPY", "GBPJPY")
+    .replaceAll("EBPUPY", "GBPJPY")
+    .replaceAll("EBPJPY", "GBPJPY")
+    .replaceAll("GBPJPY", "GBPJPY")
+
+  for (const code of SYMBOL_CODES) {
     if (compact.includes(code)) return code
   }
   if (/XAG/.test(compact) && /USD/.test(compact)) return "XAGUSD"
   if (/XAU/.test(compact) && /USD/.test(compact)) return "XAUUSD"
+  if (/AUD/.test(compact) && /USD/.test(compact)) return "AUDUSD"
+  if (/GBP/.test(compact) && /JPY/.test(compact)) return "GBPJPY"
+  if (/GBP/.test(compact) && /USD/.test(compact)) return "GBPUSD"
   if (/\bXAG\b/i.test(text)) return "XAGUSD"
   if (/\bXAU\b/i.test(text)) return "XAUUSD"
+  if (/\bAUD\b/i.test(text)) return "AUDUSD"
   for (const [pattern, code] of SYMBOL_TABLE) {
     if (pattern.test(text)) return code
   }
+  return null
+}
+
+function guessSymbolFromPrice(open?: number, close?: number): string | null {
+  const price = open ?? close
+  if (price == null || !Number.isFinite(price)) return null
+  if (price >= 800) return "XAUUSD"
+  if (price >= 180 && price < 400) return "GBPJPY"
+  if (price >= 90 && price < 180) return "USDJPY"
+  if (price >= 15 && price < 90) return "XAGUSD"
+  if (price >= 1.22 && price < 1.6) return "GBPUSD"
+  if (price >= 0.9 && price < 1.22) return "EURUSD"
+  if (price >= 0.5 && price < 0.9) return "AUDUSD"
   return null
 }
 
@@ -290,40 +335,56 @@ export function clusterWords(words: OcrWord[]): Line[] {
   })
 }
 
-function parsePriceToken(text: string): number | undefined {
-  const match = text.replaceAll(",", "").match(/\d+(?:\.\d+)?/)
+function parsePriceToken(text: string, allowFx = false): number | undefined {
+  const match = text.replaceAll(",", "").replace("%", "").match(/\d+(?:\.\d+)?/)
   if (!match) return undefined
   const value = Number(match[0])
-  return Number.isFinite(value) && value >= 8 ? value : undefined
+  const floor = allowFx ? 0.05 : 8
+  return Number.isFinite(value) && value >= floor ? value : undefined
 }
 
-function instrumentPrices(nums: number[]) {
+function instrumentPrices(nums: number[], allowFx = false) {
   const gold = nums.filter((value) => value >= 400)
   if (gold.length) return gold
-  return nums.filter((value) => value >= 8 && value < 400)
+  const floor = allowFx ? 0.05 : 8
+  return nums.filter((value) => value >= floor && value < 400)
+}
+
+function stripPnlAmounts(text: string) {
+  return text
+    .replace(/[+-]\s*\d{1,3}(?:,\d{3})*[.,]\d{1,2}\s*(?:USD|EUR|GBP)?/gi, " ")
+    .replace(/(?<![+\-\d.,])\d{1,3}(?:,\d{3})*[.,]\d{2}\s*USD\b/gi, " ")
 }
 
 function extractPrices(chunk: string): { open?: number; close?: number } {
-  const source = tidy(chunk)
+  const source = tidy(chunk).replace(/%/g, "")
   const afterAt = source.split(/\bat\b/i)[1]
   const priceRe = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d{2,5}/g
-  const parse = (match: string) => {
+  const parse = (match: string, allowFx: boolean) => {
     const value = Number(match.replaceAll(",", ""))
-    return Number.isFinite(value) && value >= 8 ? value : undefined
+    const floor = allowFx ? 0.05 : 8
+    return Number.isFinite(value) && value >= floor ? value : undefined
   }
 
   if (afterAt) {
-    // Open is glued to "at". If OCR mangled it, a later right-side figure is close only.
-    const matches = [...afterAt.matchAll(priceRe)]
+    // Drop P&L figures so the next card's "-0.18 USD" is not treated as a close.
+    const cleaned = stripPnlAmounts(afterAt)
+    const matches = [...cleaned.matchAll(priceRe)]
     const first = matches[0]
-    const openRaw = first && (first.index ?? 0) <= 4 ? parse(first[0]) : undefined
-    const open = openRaw != null ? instrumentPrices([openRaw])[0] : undefined
+    const openRaw = first && (first.index ?? 0) <= 4 ? parse(first[0], true) : undefined
+    const open = openRaw != null ? instrumentPrices([openRaw], true)[0] : undefined
     const later = instrumentPrices(
       matches
         .slice(open != null ? 1 : 0)
-        .map((match) => parse(match[0]))
+        .map((match) => parse(match[0], true))
         .filter((value): value is number => value != null),
-    ).filter((value) => open == null || Math.abs(value - open) > 0.0005)
+      true,
+    ).filter((value) => {
+      if (open == null) return true
+      if (Math.abs(value - open) <= 0.0005) return false
+      // Close must be the same instrument scale as the open.
+      return value > open * 0.5 && value < open * 2
+    })
     if (open != null) return later[0] != null ? { open, close: later[0] } : { open }
     if (later[0] != null) return { close: later[0] }
     return {}
@@ -331,7 +392,7 @@ function extractPrices(chunk: string): { open?: number; close?: number } {
 
   const prices = instrumentPrices(
     [...source.matchAll(priceRe)]
-      .map((match) => parse(match[0]))
+      .map((match) => parse(match[0], false))
       .filter((value): value is number => value != null),
   )
   if (prices.length >= 2) return { open: prices[0], close: prices[1] }
@@ -347,7 +408,7 @@ function closePriceNear(words: OcrWord[], y: number, maxX: number, open?: number
     const cy = (word.bbox.y0 + word.bbox.y1) / 2
     const dist = Math.abs(cy - y)
     if (dist >= bestDist) continue
-    const value = parsePriceToken(word.text)
+    const value = parsePriceToken(word.text, true)
     if (value == null || (open != null && Math.abs(value - open) < 0.0005)) continue
     if (open != null && (value < open * 0.2 || value > open * 5)) continue
     best = value
@@ -448,9 +509,7 @@ function applyBadges(
 
 function guessSymbol(trade: ExtractedTrade, fallback?: string) {
   if (trade.symbol !== "UNKNOWN") return trade.symbol
-  if ((trade.openPrice ?? 0) > 500) return "XAUUSD"
-  if ((trade.openPrice ?? 0) > 8 && (trade.openPrice ?? 0) < 200) return "XAGUSD"
-  return fallback ?? "UNKNOWN"
+  return guessSymbolFromPrice(trade.openPrice, trade.closePrice) ?? fallback ?? "UNKNOWN"
 }
 
 function repairDay(
@@ -530,8 +589,14 @@ function yForSnippet(lines: Line[], snippet: string) {
 
 function extractTrades(body: string, lines: Line[], headerPnl = 0): ExtractedTrade[] {
   const source = tidy(body)
-  const actionRe = /\b(buy|buv|sell|sel)\s+(0[.,]\d+|\d+[.,]\d+)(?:\s*(?:lot|lots|1ot|iot)s?)?/gi
-  const matches = [...source.matchAll(actionRe)]
+  // Allow a missing Buy/Sell word — OCR sometimes drops it and leaves "0.05 lot at …"
+  // or even bare "lot at …".
+  const actionRe =
+    /\b(?:(buy|buv|sell|sel)\s+)?(?:(0[.,]\d+|\d+[.,]\d+)\s+)?(?:lot|lots|1ot|iot)s?(?:\s+at\b)?/gi
+  const matches = [...source.matchAll(actionRe)].filter((match) => {
+    // Keep rows that look like real lot lines, not random "lot" noise.
+    return Boolean(match[1] || match[2] || /\bat\b/i.test(match[0]))
+  })
   if (!matches.length) {
     const card = parseCard(source, lines[0]?.cy ?? 0)
     return card && (card.lots || card.pnl) ? [card] : []
@@ -541,11 +606,16 @@ function extractTrades(body: string, lines: Line[], headerPnl = 0): ExtractedTra
     const actionAt = match.index ?? 0
     const prevEnd = index === 0 ? 0 : (matches[index - 1].index ?? 0) + matches[index - 1][0].length
     const nextAt = matches[index + 1]?.index ?? source.length
-    const before = source.slice(Math.max(prevEnd, actionAt - 120), actionAt)
+    const before = source.slice(Math.max(prevEnd, actionAt - 140), actionAt)
     const after = source.slice(actionAt, nextAt)
-    const prices = extractPrices(/\bat\b/i.test(after) ? after : `${before} ${after}`)
-    // P&L sits on the symbol row (before). Fall back to a signed amount after the
-    // action only when the open-price row failed to yield one.
+    // Keep the matched "lot at" text in the price haystack so forex opens under 1.0
+    // still go through the after-"at" path when the match itself ate the word "at".
+    const priceChunk = /\bat\b/i.test(after)
+      ? after
+      : /\bat\b/i.test(match[0])
+        ? `${match[0]} ${after}`
+        : `${before} ${after}`
+    const prices = extractPrices(priceChunk)
     const beforePnls = parseMoneyAll(before).filter((value) => Math.abs(value - headerPnl) > 0.009)
     const afterPnls = parseMoneyAll(after).filter((value) => Math.abs(value - headerPnl) > 0.009)
     const pnl =
@@ -553,10 +623,19 @@ function extractTrades(body: string, lines: Line[], headerPnl = 0): ExtractedTra
       parseMoneyAll(before).at(-1) ??
       afterPnls.at(-1) ??
       0
+    const lots = match[2] ? parseLots(match[2]) : 0
+    const sideWord = match[1]
+    const side: "buy" | "sell" = sideWord
+      ? /sell|sel/i.test(sideWord)
+        ? "sell"
+        : "buy"
+      : pnl < 0 && /sell|sel/i.test(before)
+        ? "sell"
+        : "buy"
     return {
       symbol: findSymbol(before) ?? findSymbol(after) ?? "UNKNOWN",
-      side: /sell|sel/i.test(match[1]) ? "sell" : "buy",
-      lots: parseLots(match[2]),
+      side,
+      lots,
       pnl,
       openPrice: prices.open,
       closePrice: prices.close,

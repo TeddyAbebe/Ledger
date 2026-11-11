@@ -411,14 +411,14 @@ function toDraft(day: ExtractedDay): DraftDay {
 }
 
 function tradeKey(trade: ExtractedTrade) {
-  // P&L is left out so a lost-minus OCR (0) can be replaced by the correct negative.
-  return [
-    trade.symbol,
-    trade.side,
-    trade.lots,
-    trade.openPrice ?? "",
-    trade.closePrice ?? "",
-  ].join("|")
+  const open = trade.openPrice ?? ""
+  const close = trade.closePrice ?? ""
+  if (open !== "" || close !== "") {
+    // Same fill prices ⇒ same trade; P&L left out so a lost-minus (0) can upgrade.
+    return [trade.symbol, trade.side, trade.lots, open, close].join("|")
+  }
+  // No prices yet — keep P&L so two EURUSD 0.02 buys don't collapse into one.
+  return [trade.symbol, trade.side, trade.lots, trade.pnl.toFixed(2)].join("|")
 }
 
 function preferTrade(current: ExtractedTrade, incoming: ExtractedTrade) {
