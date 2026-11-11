@@ -88,8 +88,10 @@ export function Header({ stats, settings, onTheme, onOpenMenu }: Props) {
           <button
             type="button"
             onClick={() => navigate("/log")}
-            className={`hidden rounded-full px-4 py-2 text-sm font-semibold sm:inline-flex ${
-              logging ? "bg-gold text-on-accent" : "bg-gold text-on-accent shadow-[0_0_24px_color-mix(in_srgb,var(--accent)_28%,transparent)]"
+            className={`rounded-full px-3 py-2 text-sm font-semibold sm:px-4 ${
+              logging
+                ? "bg-gold text-on-accent"
+                : "bg-gold text-on-accent shadow-[0_0_24px_color-mix(in_srgb,var(--accent)_28%,transparent)]"
             }`}
           >
             Log trade

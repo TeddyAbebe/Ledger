@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom"
+import { Outlet, Route, Routes } from "react-router-dom"
 import { Header } from "./components/Header"
 import { MenuSheet } from "./components/MenuSheet"
 import { useJournal } from "./context"
@@ -22,9 +22,6 @@ function Layout() {
     stopCloudSync,
   } = useJournal()
   const [menuOpen, setMenuOpen] = useState(false)
-  const location = useLocation()
-  const navigate = useNavigate()
-  const onLogPage = location.pathname.startsWith("/log")
 
   return (
     <div className="relative min-h-svh overflow-x-hidden bg-bg">
@@ -35,20 +32,9 @@ function Layout() {
         onTheme={(theme) => setSettings({ ...settings, theme })}
         onOpenMenu={() => setMenuOpen(true)}
       />
-      <main
-        className={`relative ${onLogPage ? "" : "pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-0"}`}
-      >
+      <main className="relative">
         <Outlet />
       </main>
-      {!onLogPage ? (
-        <button
-          type="button"
-          onClick={() => navigate("/log")}
-          className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 rounded-full bg-gold px-5 py-3 text-sm font-semibold text-on-accent shadow-[0_12px_40px_color-mix(in_srgb,var(--accent)_35%,transparent)] sm:hidden"
-        >
-          Log trade
-        </button>
-      ) : null}
       <MenuSheet
         open={menuOpen}
         syncKey={syncKey}
