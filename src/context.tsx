@@ -11,6 +11,7 @@ import {
   saveSyncKey,
   type SyncStatus,
 } from "./cloudSync"
+import { consumeForceCloudPush, loadSeededTradesIfNeeded } from "./exnessCsv"
 import { computeStats, loadSettings, loadTrades, saveSettings, saveTrades } from "./lib"
 import type { ExtractedDay, ExtractedTrade } from "./ocr/parseExness"
 import type { Settings, Trade } from "./types"
@@ -46,7 +47,10 @@ type JournalValue = {
 const JournalContext = createContext<JournalValue | null>(null)
 
 export function JournalProvider({ children }: { children: ReactNode }) {
-  const [trades, setTrades] = useState<Trade[]>(() => loadTrades())
+  const [trades, setTrades] = useState<Trade[]>(() => {
+    const existing = loadTrades()
+    return loadSeededTradesIfNeeded(existing) ?? existing
+  })
   const [settings, setSettingsState] = useState<Settings>(() => loadSettings())
   const [syncKey, setSyncKey] = useState<string | null>(() => loadSyncKey())
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => (loadSyncKey() ? "idle" : "off"))
@@ -63,6 +67,12 @@ export function JournalProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!syncKey) return
+    // After replacing incomplete local/OCR data with the Exness CSV, push that
+    // snapshot so cloud devices pick up the corrected history.
+    if (consumeForceCloudPush()) {
+      void pushToCloud(syncKey, trades, settings)
+      return
+    }
     void hydrateFromCloud(syncKey)
   }, [])
 
